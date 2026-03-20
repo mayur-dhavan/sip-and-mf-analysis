@@ -1,15 +1,38 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
+import { searchFunds } from '@/services/api';
+import { FundSearchResult } from '@/types';
 
 interface SearchComponentProps {
-  onSearch: (ticker: string) => void;
+  onSearch: (ticker: string, fundName?: string) => void;
   isLoading: boolean;
 }
 
 export function SearchComponent({ onSearch, isLoading }: SearchComponentProps) {
   const [ticker, setTicker] = useState('');
   const [error, setError] = useState('');
+  const [suggestions, setSuggestions] = useState<FundSearchResult[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  useEffect(() => {
+    if (ticker.trim().length < 2 || isLoading) {
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchFunds(ticker);
+        setSuggestions(results);
+        setShowSuggestions(results.length > 0);
+      } catch {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [ticker, isLoading]);
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -23,6 +46,21 @@ export function SearchComponent({ onSearch, isLoading }: SearchComponentProps) {
     
     setError('');
     onSearch(trimmedTicker);
+    setShowSuggestions(false);
+  };
+
+  const handleSuggestionClick = (item: FundSearchResult) => {
+    const executableTicker = item.yahoo_ticker || item.ticker;
+    setTicker(executableTicker);
+    setError('');
+    setShowSuggestions(false);
+
+    if (item.is_supported) {
+      onSearch(executableTicker, item.name);
+      return;
+    }
+
+    setError('AMFI entry found, but Yahoo ticker mapping is not available yet for direct analysis.');
   };
 
   return (
@@ -40,13 +78,43 @@ export function SearchComponent({ onSearch, isLoading }: SearchComponentProps) {
               type="text"
               value={ticker}
               onChange={(e) => {
-                setTicker(e.target.value);
+                const next = e.target.value;
+                setTicker(next);
+                if (next.trim().length < 2) {
+                  setSuggestions([]);
+                  setShowSuggestions(false);
+                }
                 if (error) setError('');
               }}
-              placeholder="Enter ticker symbol (e.g., NIPPONINDIA.NS)"
+              placeholder="Search mutual fund name or ticker (e.g., Axis Small Cap / 0P0000XVKR.BO)"
               className="w-full pl-12 pr-4 py-3.5 bg-[var(--card-background)] border border-[var(--card-border)] rounded-xl text-[var(--foreground)] placeholder-[var(--muted)] focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent outline-none transition-all duration-200"
               disabled={isLoading}
+              onFocus={() => setShowSuggestions(suggestions.length > 0)}
             />
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute z-20 mt-2 w-full bg-[var(--card-background)] border border-[var(--card-border)] rounded-xl shadow-lg max-h-64 overflow-auto">
+                {suggestions.map((item) => (
+                  <button
+                    key={item.ticker}
+                    type="button"
+                    onClick={() => handleSuggestionClick(item)}
+                    className="w-full text-left px-4 py-3 hover:bg-[var(--surface)] transition-colors"
+                    disabled={isLoading}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-sm font-medium text-[var(--foreground)]">{item.name}</div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${item.is_supported ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {item.is_supported ? 'Analyzable' : 'Lookup only'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-[var(--muted)] font-mono mt-0.5">{item.yahoo_ticker || item.ticker}</div>
+                    <div className="text-[11px] text-[var(--muted)] mt-0.5">
+                      {[item.fund_house, item.category, item.amfi_code ? `AMFI ${item.amfi_code}` : null].filter(Boolean).join(' | ')}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <button
             type="submit"
@@ -74,7 +142,7 @@ export function SearchComponent({ onSearch, isLoading }: SearchComponentProps) {
       {/* Quick ticker suggestions */}
       <div className="mt-3 flex items-center gap-2 flex-wrap pl-1">
         <span className="text-xs text-[var(--muted)]">Try:</span>
-        {['0P0000XVKR.BO', '0P0000XVL1.BO', '0P0000XVKY.BO', '^NSEI'].map((t) => (
+        {['0P0000XVKR.BO', '0P0000XVL1.BO', '0P0001K4CC.BO', '^NSEI'].map((t) => (
           <button
             key={t}
             type="button"

@@ -162,7 +162,7 @@ class FeatureCalculator:
     @staticmethod
     def calculate_daily_returns(nav_series: pd.Series) -> pd.Series:
         """Calculate daily percentage returns."""
-        return nav_series.pct_change()
+        return nav_series.pct_change(fill_method=None)
 
     @staticmethod
     def calculate_roc(nav_series: pd.Series, period: int = 10) -> pd.Series:
@@ -170,6 +170,37 @@ class FeatureCalculator:
         if len(nav_series) < period:
             return pd.Series([np.nan] * len(nav_series), index=nav_series.index)
         return (nav_series - nav_series.shift(period)) / nav_series.shift(period) * 100
+
+    @staticmethod
+    def calculate_return(nav_series: pd.Series, period: int) -> pd.Series:
+        """Calculate percentage return over a lookback period."""
+        if len(nav_series) < period + 1:
+            return pd.Series([np.nan] * len(nav_series), index=nav_series.index)
+        return nav_series.pct_change(periods=period, fill_method=None)
+
+    @staticmethod
+    def calculate_rolling_sharpe(nav_series: pd.Series, period: int = 30) -> pd.Series:
+        """Calculate rolling Sharpe proxy using daily returns and annualization."""
+        daily_returns = nav_series.pct_change(fill_method=None)
+        rolling_mean = daily_returns.rolling(window=period, min_periods=period).mean()
+        rolling_std = daily_returns.rolling(window=period, min_periods=period).std()
+        sharpe = (rolling_mean / rolling_std) * np.sqrt(252)
+        return sharpe.replace([np.inf, -np.inf], np.nan)
+
+    @staticmethod
+    def calculate_zscore(nav_series: pd.Series, period: int = 20) -> pd.Series:
+        """Calculate z-score of NAV relative to rolling mean/std."""
+        rolling_mean = nav_series.rolling(window=period, min_periods=period).mean()
+        rolling_std = nav_series.rolling(window=period, min_periods=period).std()
+        zscore = (nav_series - rolling_mean) / rolling_std
+        return zscore.replace([np.inf, -np.inf], np.nan)
+
+    @staticmethod
+    def calculate_drawdown(nav_series: pd.Series, period: int = 60) -> pd.Series:
+        """Calculate rolling drawdown from peak over period."""
+        rolling_max = nav_series.rolling(window=period, min_periods=period).max()
+        drawdown = (nav_series / rolling_max) - 1.0
+        return drawdown
     
     def calculate_all_features(self, nav_df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -229,5 +260,10 @@ class FeatureCalculator:
         # Derived features
         result_df['NAV_to_SMA50_Ratio'] = nav_series / result_df['SMA_50']
         result_df['Volatility_Ratio'] = result_df['Rolling_Volatility_10'] / result_df['Rolling_Volatility_30']
+        result_df['Return_5'] = self.calculate_return(nav_series, period=5)
+        result_df['Return_20'] = self.calculate_return(nav_series, period=20)
+        result_df['Sharpe_30'] = self.calculate_rolling_sharpe(nav_series, period=30)
+        result_df['ZScore_20'] = self.calculate_zscore(nav_series, period=20)
+        result_df['Drawdown_60'] = self.calculate_drawdown(nav_series, period=60)
         
         return result_df

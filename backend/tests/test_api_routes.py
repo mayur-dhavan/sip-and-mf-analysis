@@ -59,7 +59,7 @@ class TestPredictVolatilityEndpoint:
         # Setup mocks
         mock_df.fetch_nav_data.return_value = mock_nav_data
         mock_fc.calculate_all_features.return_value = mock_features_data
-        mock_ml.predict_volatility.return_value = 0  # Stable
+        mock_ml.predict_with_confidence.return_value = (0, 0.35, 0.65)  # Stable
         
         # Make request
         response = client.post("/api/predict-volatility/", json={"ticker": "NIPPONINDIA.NS"})
@@ -83,7 +83,7 @@ class TestPredictVolatilityEndpoint:
         # Setup mocks
         mock_df.fetch_nav_data.return_value = mock_nav_data
         mock_fc.calculate_all_features.return_value = mock_features_data
-        mock_ml.predict_volatility.return_value = 1  # High_Risk
+        mock_ml.predict_with_confidence.return_value = (1, 0.82, 0.82)  # High_Risk
         
         # Make request
         response = client.post("/api/predict-volatility/", json={"ticker": "NIPPONINDIA.NS"})
@@ -131,7 +131,7 @@ class TestPredictVolatilityEndpoint:
         # Setup mocks
         mock_df.fetch_nav_data.return_value = mock_nav_data
         mock_fc.calculate_all_features.return_value = mock_features_data
-        mock_ml.predict_volatility.side_effect = ModelNotFoundError("Model file not found")
+        mock_ml.predict_with_confidence.side_effect = ModelNotFoundError("Model file not found")
         
         # Make request
         response = client.post("/api/predict-volatility/", json={"ticker": "TEST.NS"})
@@ -150,7 +150,7 @@ class TestPredictVolatilityEndpoint:
         # Setup mocks
         mock_df.fetch_nav_data.return_value = mock_nav_data
         mock_fc.calculate_all_features.return_value = mock_features_data
-        mock_ml.predict_volatility.side_effect = PredictionError("Prediction failed")
+        mock_ml.predict_with_confidence.side_effect = PredictionError("Prediction failed")
         
         # Make request
         response = client.post("/api/predict-volatility/", json={"ticker": "TEST.NS"})
@@ -184,7 +184,7 @@ class TestPredictVolatilityEndpoint:
         # Setup mocks
         mock_df.fetch_nav_data.return_value = mock_nav_data
         mock_fc.calculate_all_features.return_value = mock_features_data
-        mock_ml.predict_volatility.return_value = 0
+        mock_ml.predict_with_confidence.return_value = (0, 0.40, 0.60)
         
         # Make request
         response = client.post("/api/predict-volatility/", json={"ticker": "TEST.NS"})
@@ -211,7 +211,7 @@ class TestPredictVolatilityEndpoint:
         # Setup mocks
         mock_df.fetch_nav_data.return_value = mock_nav_data
         mock_fc.calculate_all_features.return_value = mock_features_data
-        mock_ml.predict_volatility.return_value = 0
+        mock_ml.predict_with_confidence.return_value = (0, 0.40, 0.60)
         
         # Make request
         response = client.post("/api/predict-volatility/", json={"ticker": "TEST.NS"})

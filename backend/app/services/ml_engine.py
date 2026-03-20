@@ -5,34 +5,8 @@ import os
 from typing import Dict, Union
 import numpy as np
 from pathlib import Path
+from app.services.feature_config import FEATURE_COLS, FEATURE_KEY_MAP
 
-
-# All feature columns matching training
-FEATURE_COLS = [
-    'RSI', 'SMA_50', 'SMA_20', 'EMA_20',
-    'Rolling_Volatility_30', 'Rolling_Volatility_10',
-    'Daily_Return', 'ROC_10',
-    'MACD', 'MACD_Signal', 'MACD_Hist',
-    'BB_Width', 'NAV_to_SMA50_Ratio', 'Volatility_Ratio'
-]
-
-# Mapping from API feature keys to column names
-FEATURE_KEY_MAP = {
-    'rsi': 'RSI',
-    'sma_50': 'SMA_50',
-    'sma_20': 'SMA_20',
-    'ema_20': 'EMA_20',
-    'rolling_volatility_30': 'Rolling_Volatility_30',
-    'rolling_volatility_10': 'Rolling_Volatility_10',
-    'daily_return': 'Daily_Return',
-    'roc_10': 'ROC_10',
-    'macd': 'MACD',
-    'macd_signal': 'MACD_Signal',
-    'macd_hist': 'MACD_Hist',
-    'bb_width': 'BB_Width',
-    'nav_to_sma50_ratio': 'NAV_to_SMA50_Ratio',
-    'volatility_ratio': 'Volatility_Ratio',
-}
 
 
 class ModelNotFoundError(Exception):
@@ -56,6 +30,7 @@ class MLEngine:
         self.model_path = str(model_path)
         self._model = None
         self._feature_cols = FEATURE_COLS
+        self._decision_threshold = 0.5
     
     def load_model(self, model_path: str = None) -> object:
         """Load pre-trained model from disk."""
@@ -72,9 +47,11 @@ class MLEngine:
             if isinstance(artifact, dict) and 'model' in artifact:
                 self._model = artifact['model']
                 self._feature_cols = artifact.get('feature_cols', FEATURE_COLS)
+                self._decision_threshold = float(artifact.get('decision_threshold', 0.5))
             else:
                 self._model = artifact
                 self._feature_cols = FEATURE_COLS
+                self._decision_threshold = 0.5
             return self._model
         except Exception as e:
             raise ModelNotFoundError(
@@ -95,27 +72,8 @@ class MLEngine:
             self.load_model()
         
         try:
-            # Build feature array in the correct column order
-            feature_values = []
-            for col in self._feature_cols:
-                # Find the right key
-                key = None
-                for k, v in FEATURE_KEY_MAP.items():
-                    if v == col:
-                        key = k
-                        break
-                
-                if key is None or key not in features:
-                    raise PredictionError(f"Missing required feature: {col}")
-                
-                val = features[key]
-                # Replace nan/inf with 0
-                if np.isnan(val) or np.isinf(val):
-                    val = 0.0
-                feature_values.append(val)
-            
-            feature_array = np.array([feature_values])
-            
+            feature_array = self._build_feature_array(features)
+
             prediction = self._model.predict(feature_array)
             result = int(prediction[0])
             
@@ -130,3 +88,50 @@ class MLEngine:
             raise
         except Exception as e:
             raise PredictionError(f"Prediction failed: {str(e)}")
+
+    def predict_with_confidence(self, features: Dict[str, float]) -> tuple[int, float, float]:
+        """
+        Predict class plus probability metadata.
+
+        Returns:
+            Tuple[prediction, high_risk_probability, confidence]
+        """
+        if self._model is None:
+            self.load_model()
+
+        try:
+            feature_array = self._build_feature_array(features)
+            high_risk_probability = 0.5
+            if hasattr(self._model, "predict_proba"):
+                probs = self._model.predict_proba(feature_array)[0]
+                if len(probs) >= 2:
+                    high_risk_probability = float(probs[1])
+                else:
+                    high_risk_probability = float(probs[0])
+
+            prediction = int(high_risk_probability >= self._decision_threshold)
+
+            confidence = max(high_risk_probability, 1.0 - high_risk_probability)
+            return prediction, high_risk_probability, float(confidence)
+        except Exception as e:
+            raise PredictionError(f"Prediction with confidence failed: {str(e)}")
+
+    def _build_feature_array(self, features: Dict[str, float]) -> np.ndarray:
+        """Build feature array in model column order with safe value handling."""
+        feature_values = []
+        for col in self._feature_cols:
+            key = None
+            for k, v in FEATURE_KEY_MAP.items():
+                if v == col:
+                    key = k
+                    break
+
+            if key is None or key not in features:
+                raise PredictionError(f"Missing required feature: {col}")
+
+            val = features[key]
+            if np.isnan(val) or np.isinf(val):
+                val = 0.0
+            feature_values.append(val)
+
+        return np.array([feature_values])

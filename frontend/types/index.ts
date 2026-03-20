@@ -15,16 +15,31 @@ export interface HistoricalNavPoint {
  */
 export interface PredictionData {
   prediction: 'Stable' | 'High_Risk';
+  ticker: string;
+  fundName: string;
   historicalNav: HistoricalNavPoint[];
   currentRsi: number;
   currentVolatility: number;
   currentNav: number;
+  riskProbability?: number;
+  modelConfidence?: number;
+  analysisSummary?: string;
   currentMacd?: number;
   currentMacdSignal?: number;
   bbWidth?: number;
   dailyReturn?: number;
   sma20?: number;
   sma50?: number;
+}
+
+export interface FundSearchResult {
+  ticker: string;
+  name: string;
+  amfi_code?: string;
+  fund_house?: string;
+  category?: string;
+  yahoo_ticker?: string;
+  is_supported: boolean;
 }
 
 /**

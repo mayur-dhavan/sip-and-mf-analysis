@@ -7,7 +7,12 @@ from datetime import datetime, timedelta
 import asyncio
 from typing import Dict
 
-from app.models.schemas import PredictionRequest, PredictionResponse, HistoricalNavPoint, ErrorResponse
+from app.models.schemas import (
+    PredictionRequest,
+    PredictionResponse,
+    HistoricalNavPoint,
+    FundSearchResponse,
+)
 from app.services.data_fetcher import DataFetcher
 from app.services.feature_calculator import FeatureCalculator
 from app.services.ml_engine import MLEngine, ModelNotFoundError, PredictionError
@@ -28,7 +33,7 @@ async def predict_volatility(request: PredictionRequest):
     Predict mutual fund volatility risk.
     
     Process:
-    1. Fetch 3 years NAV data via DataFetcher
+    1. Fetch 5 years NAV data via DataFetcher
     2. Calculate technical indicators via FeatureCalculator
     3. Extract latest values for prediction
     4. Load ML model and predict
@@ -113,7 +118,7 @@ async def _process_prediction(ticker: str) -> PredictionResponse:
     Internal async function to orchestrate prediction workflow.
     
     Steps:
-    1. Fetch 3 years NAV data
+    1. Fetch 5 years NAV data
     2. Calculate technical indicators
     3. Extract latest feature values
     4. Predict volatility
@@ -125,12 +130,17 @@ async def _process_prediction(ticker: str) -> PredictionResponse:
     Returns:
         PredictionResponse with all required fields
     """
-    # Step 1: Fetch NAV data (3 years)
+    # Step 1: Fetch NAV data (5 years)
     nav_df = await asyncio.to_thread(
         data_fetcher.fetch_nav_data,
         ticker,
-        period="3y"
+        period="5y"
     )
+
+    fund_name = await asyncio.to_thread(data_fetcher.resolve_fund_name, ticker)
+    fund_name = str(fund_name).strip() if fund_name is not None else ticker
+    if not fund_name:
+        fund_name = ticker
     
     # Step 2: Calculate all technical indicators
     features_df = await asyncio.to_thread(
@@ -139,30 +149,37 @@ async def _process_prediction(ticker: str) -> PredictionResponse:
     )
     
     # Step 3: Extract latest values (most recent non-NaN) for all features
-    def safe_last(series):
-        dropped = series.dropna()
+    def safe_last(column_name: str):
+        if column_name not in features_df.columns:
+            return 0.0
+        dropped = features_df[column_name].dropna()
         return float(dropped.iloc[-1]) if len(dropped) > 0 else 0.0
     
     latest_features = {
-        'rsi': safe_last(features_df['RSI']),
-        'sma_50': safe_last(features_df['SMA_50']),
-        'sma_20': safe_last(features_df['SMA_20']),
-        'ema_20': safe_last(features_df['EMA_20']),
-        'rolling_volatility_30': safe_last(features_df['Rolling_Volatility_30']),
-        'rolling_volatility_10': safe_last(features_df['Rolling_Volatility_10']),
-        'daily_return': safe_last(features_df['Daily_Return']),
-        'roc_10': safe_last(features_df['ROC_10']),
-        'macd': safe_last(features_df['MACD']),
-        'macd_signal': safe_last(features_df['MACD_Signal']),
-        'macd_hist': safe_last(features_df['MACD_Hist']),
-        'bb_width': safe_last(features_df['BB_Width']),
-        'nav_to_sma50_ratio': safe_last(features_df['NAV_to_SMA50_Ratio']),
-        'volatility_ratio': safe_last(features_df['Volatility_Ratio']),
+        'rsi': safe_last('RSI'),
+        'sma_50': safe_last('SMA_50'),
+        'sma_20': safe_last('SMA_20'),
+        'ema_20': safe_last('EMA_20'),
+        'rolling_volatility_30': safe_last('Rolling_Volatility_30'),
+        'rolling_volatility_10': safe_last('Rolling_Volatility_10'),
+        'daily_return': safe_last('Daily_Return'),
+        'roc_10': safe_last('ROC_10'),
+        'macd': safe_last('MACD'),
+        'macd_signal': safe_last('MACD_Signal'),
+        'macd_hist': safe_last('MACD_Hist'),
+        'bb_width': safe_last('BB_Width'),
+        'nav_to_sma50_ratio': safe_last('NAV_to_SMA50_Ratio'),
+        'volatility_ratio': safe_last('Volatility_Ratio'),
+        'return_5': safe_last('Return_5'),
+        'return_20': safe_last('Return_20'),
+        'sharpe_30': safe_last('Sharpe_30'),
+        'zscore_20': safe_last('ZScore_20'),
+        'drawdown_60': safe_last('Drawdown_60'),
     }
     
     # Step 4: Predict volatility
-    prediction_int = await asyncio.to_thread(
-        ml_engine.predict_volatility,
+    prediction_int, risk_probability, model_confidence = await asyncio.to_thread(
+        ml_engine.predict_with_confidence,
         latest_features
     )
     
@@ -187,18 +204,91 @@ async def _process_prediction(ticker: str) -> PredictionResponse:
     
     # Get current NAV (most recent value)
     current_nav = float(nav_df['Close'].iloc[-1])
+
+    analysis_summary = _build_analysis_summary(
+        prediction=prediction_str,
+        confidence=model_confidence,
+        risk_probability=risk_probability,
+        current_rsi=float(latest_features['rsi']),
+        current_nav=current_nav,
+        sma_20=float(latest_features['sma_20']),
+        sma_50=float(latest_features['sma_50']),
+        current_volatility=float(latest_features['rolling_volatility_30']),
+    )
     
     # Build response
     return PredictionResponse(
         prediction=prediction_str,
+        ticker=ticker,
+        fund_name=fund_name,
         historical_nav=historical_nav,
         current_rsi=float(latest_features['rsi']),
         current_volatility=float(latest_features['rolling_volatility_30']),
         current_nav=current_nav,
+        risk_probability=float(risk_probability),
+        model_confidence=float(model_confidence),
+        analysis_summary=analysis_summary,
         current_macd=float(latest_features['macd']),
         current_macd_signal=float(latest_features['macd_signal']),
         bb_width=float(latest_features['bb_width']),
         daily_return=float(latest_features['daily_return']),
         sma_20=float(latest_features['sma_20']),
         sma_50=float(latest_features['sma_50']),
+    )
+
+
+@router.get("/api/search-funds/", response_model=FundSearchResponse)
+async def search_funds(query: str, limit: int = 10):
+    """Search mutual fund tickers by name or symbol for autocomplete UX."""
+    query_clean = query.strip()
+    if len(query_clean) < 2:
+        return FundSearchResponse(query=query_clean, results=[])
+
+    safe_limit = max(1, min(limit, 25))
+    results = await asyncio.to_thread(data_fetcher.search_funds, query_clean, safe_limit)
+    return FundSearchResponse(query=query_clean, results=results)
+
+
+def _build_analysis_summary(
+    prediction: str,
+    confidence: float,
+    risk_probability: float,
+    current_rsi: float,
+    current_nav: float,
+    sma_20: float,
+    sma_50: float,
+    current_volatility: float,
+) -> str:
+    """Generate compact human-readable interpretation of the model output."""
+    signals = []
+
+    if current_rsi >= 70:
+        signals.append("RSI indicates overbought momentum")
+    elif current_rsi <= 30:
+        signals.append("RSI indicates oversold conditions")
+    else:
+        signals.append("RSI is in neutral range")
+
+    if sma_20 > sma_50 and current_nav >= sma_20:
+        signals.append("short-term trend is bullish")
+    elif sma_20 < sma_50 and current_nav < sma_20:
+        signals.append("short-term trend is bearish")
+    else:
+        signals.append("trend signals are mixed")
+
+    nav_volatility_ratio = (current_volatility / current_nav) if current_nav else 0.0
+    if nav_volatility_ratio > 0.035:
+        signals.append("recent price swings are elevated")
+    elif nav_volatility_ratio < 0.015:
+        signals.append("recent price action is relatively stable")
+    else:
+        signals.append("volatility is moderate")
+
+    confidence_pct = confidence * 100
+    risk_pct = risk_probability * 100
+    return (
+        f"Model predicts {prediction.replace('_', ' ')} with {confidence_pct:.1f}% confidence "
+        f"(High Risk probability {risk_pct:.1f}%). "
+        + "; ".join(signals)
+        + "."
     )

@@ -116,3 +116,32 @@ pytest --cov=app tests/
 ### Predict Volatility (Coming Soon)
 - **POST** `/api/predict-volatility/`
 - Predicts mutual fund volatility risk
+
+## Automated Retraining and Model Versioning
+
+The backend supports periodic retraining with champion/challenger promotion.
+
+### One-Off Automated Cycle
+
+```bash
+python scripts/automated_retrain.py --once
+```
+
+### Periodic Retraining Loop (e.g., every 24 hours)
+
+```bash
+python scripts/automated_retrain.py --interval-hours 24
+```
+
+### Optional Promotion Strictness
+
+```bash
+python scripts/automated_retrain.py --interval-hours 24 --min-score-improvement 0.005
+```
+
+How it works:
+- Trains a challenger model and saves it under `models/challengers/`.
+- Registers the challenger in `models/registry/manifest.json`.
+- Compares challenger score vs current champion score.
+- Promotes the challenger only if it beats champion by the configured margin.
+- Writes serving champion artifact to `models/volatility_model.pkl`.

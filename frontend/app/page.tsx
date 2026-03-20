@@ -14,17 +14,20 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSearchedTicker, setLastSearchedTicker] = useState<string>('');
+  const [lastSearchedFundName, setLastSearchedFundName] = useState<string>('');
 
-  const handleSearch = async (ticker: string) => {
+  const handleSearch = async (ticker: string, selectedFundName?: string) => {
     setError(null);
     setData(null);
     setLastSearchedTicker(ticker);
+    setLastSearchedFundName(selectedFundName || '');
     setLoading(true);
     
     const startTime = Date.now();
     
     try {
       const result = await predictVolatility(ticker);
+      setLastSearchedFundName(result.fundName || selectedFundName || '');
       
       const elapsedTime = Date.now() - startTime;
       const remainingTime = Math.max(0, 500 - elapsedTime);
@@ -95,7 +98,7 @@ export default function Home() {
           </h1>
           <p className="text-[var(--muted)] max-w-xl mx-auto text-sm sm:text-base">
             AI-powered risk analysis for Indian Mutual Funds using machine learning
-            with 14 technical indicators and an ensemble model.
+            with 19 technical indicators and a stacked ensemble model.
           </p>
         </header>
 
@@ -118,8 +121,11 @@ export default function Home() {
             {/* Ticker header */}
             <div className="flex items-center gap-2 animate-fade-in-up">
               <span className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">Results for</span>
+              <span className="text-sm font-semibold text-[var(--foreground)] bg-[var(--surface)] px-3 py-1 rounded-lg">
+                {data.fundName || lastSearchedFundName || 'Mutual Fund'}
+              </span>
               <span className="text-sm font-bold text-[var(--foreground)] bg-[var(--surface)] px-3 py-1 rounded-lg font-mono">
-                {lastSearchedTicker}
+                {data.ticker || lastSearchedTicker}
               </span>
             </div>
 
@@ -143,13 +149,32 @@ export default function Home() {
                 </div>
                 <div>
                   <p className="text-xs text-[var(--muted)] mb-0.5">Features Used</p>
-                  <p className="font-semibold text-[var(--foreground)]">14 indicators</p>
+                  <p className="font-semibold text-[var(--foreground)]">19 indicators</p>
                 </div>
                 <div>
                   <p className="text-xs text-[var(--muted)] mb-0.5">Prediction Window</p>
                   <p className="font-semibold text-[var(--foreground)]">15 days</p>
                 </div>
               </div>
+              <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-[var(--surface)] rounded-lg p-3">
+                  <p className="text-xs text-[var(--muted)] mb-1">High Risk Probability</p>
+                  <p className="text-base font-semibold text-[var(--foreground)]">
+                    {data.riskProbability !== undefined ? `${(data.riskProbability * 100).toFixed(1)}%` : 'N/A'}
+                  </p>
+                </div>
+                <div className="bg-[var(--surface)] rounded-lg p-3">
+                  <p className="text-xs text-[var(--muted)] mb-1">Model Confidence</p>
+                  <p className="text-base font-semibold text-[var(--foreground)]">
+                    {data.modelConfidence !== undefined ? `${(data.modelConfidence * 100).toFixed(1)}%` : 'N/A'}
+                  </p>
+                </div>
+              </div>
+              {data.analysisSummary && (
+                <p className="mt-4 text-sm text-[var(--foreground)] leading-relaxed">
+                  {data.analysisSummary}
+                </p>
+              )}
             </div>
           </div>
         )}

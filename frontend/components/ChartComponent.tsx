@@ -20,7 +20,19 @@ interface ChartComponentProps {
   data: ChartDataPoint[];
 }
 
-function CustomTooltip({ active, payload, label }: any) {
+interface TooltipPayloadItem {
+  color?: string;
+  name?: string;
+  value?: number;
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipPayloadItem[];
+  label?: string;
+}
+
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (active && payload && payload.length) {
     return (
       <div className="bg-[var(--card-background)] border border-[var(--card-border)] rounded-xl shadow-xl p-4">
@@ -31,7 +43,7 @@ function CustomTooltip({ active, payload, label }: any) {
             day: 'numeric',
           })}
         </p>
-        {payload.map((entry: any, index: number) => (
+        {payload.map((entry, index: number) => (
           <div key={index} className="flex items-center gap-2 text-sm">
             <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
             <span className="text-[var(--muted)]">{entry.name}:</span>

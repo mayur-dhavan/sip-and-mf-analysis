@@ -8,6 +8,8 @@ from contextlib import contextmanager
 import re
 import requests
 from datetime import datetime, timedelta
+from pathlib import Path
+import joblib
 
 from app.utils.exceptions import TickerNotFoundError, DataSourceUnavailableError
 from app.data.amfi_master import AMFI_MASTER_FUNDS
@@ -42,6 +44,7 @@ class DataFetcher:
         self._fund_registry = []
         self._amfi_to_name: Dict[str, str] = {}
         self._yahoo_to_amfi: Dict[str, str] = {}
+        self._verified_supported = self._load_verified_supported_tickers()
 
         for fund in AMFI_MASTER_FUNDS:
             yahoo_ticker = fund.get("yahoo_ticker")
@@ -55,7 +58,7 @@ class DataFetcher:
                 "fund_house": fund["fund_house"],
                 "category": fund["category"],
                 "yahoo_ticker": yahoo_ticker,
-                "is_supported": bool(yahoo_ticker) or amfi_supported,
+                "is_supported": self._is_entry_supported(yahoo_ticker, amfi_code),
             }
             self._fund_registry.append(record)
             if amfi_supported:
@@ -64,6 +67,30 @@ class DataFetcher:
                 self._fund_name_cache[yahoo_ticker.upper()] = fund["name"]
                 if amfi_supported:
                     self._yahoo_to_amfi[yahoo_ticker.upper()] = amfi_code
+
+    def _load_verified_supported_tickers(self) -> set[str]:
+        """Load successful training tickers from latest artifact for support labeling."""
+        try:
+            model_path = Path(__file__).resolve().parents[2] / "models" / "volatility_model.pkl"
+            if not model_path.exists():
+                return set()
+            artifact = joblib.load(model_path)
+            successful = artifact.get("successful_tickers", []) if isinstance(artifact, dict) else []
+            return {str(item).strip().upper() for item in successful if str(item).strip()}
+        except Exception:
+            return set()
+
+    def _is_entry_supported(self, yahoo_ticker: Optional[str], amfi_code: str) -> bool:
+        """Decide whether search entry should be flagged analyzable."""
+        if not self._verified_supported:
+            # If artifact is absent, fall back to broad support behavior.
+            return bool(yahoo_ticker) or amfi_code.isdigit()
+
+        if yahoo_ticker and str(yahoo_ticker).strip().upper() in self._verified_supported:
+            return True
+        if amfi_code.isdigit() and f"AMFI:{amfi_code}" in self._verified_supported:
+            return True
+        return False
     
     def fetch_nav_data(self, ticker: str, period: str = "5y") -> pd.DataFrame:
         """
@@ -114,8 +141,6 @@ class DataFetcher:
             if mapped_amfi:
                 return self._fetch_amfi_nav_data(mapped_amfi, period)
             raise
-        except TickerNotFoundError:
-            raise
         except Exception as e:
             # Handle network errors, API failures, etc.
             raise DataSourceUnavailableError(
@@ -156,12 +181,16 @@ class DataFetcher:
                     f"AMFI NAV parsing failed for scheme code '{amfi_code}'."
                 )
 
-            nav_df = pd.DataFrame(rows, columns=["Date", "Close"]).set_index("Date")
-            nav_df = nav_df.sort_index()
+            nav_df_full = pd.DataFrame(rows, columns=["Date", "Close"]).set_index("Date")
+            nav_df_full = nav_df_full.sort_index()
+            nav_df = nav_df_full
 
             cutoff = self._period_to_cutoff(period)
             if cutoff is not None:
                 nav_df = nav_df[nav_df.index >= cutoff]
+                if nav_df.empty and not nav_df_full.empty:
+                    # Newer funds may not have full 5y history; use all available data.
+                    nav_df = nav_df_full
 
             if nav_df.empty:
                 raise TickerNotFoundError(

@@ -56,7 +56,14 @@ def get_training_tickers() -> List[str]:
         for item in AMFI_MASTER_FUNDS
         if item.get("yahoo_ticker")
     })
-    universe = sorted(set(mapped_tickers + MANUAL_BENCHMARKS))
+
+    amfi_scheme_tickers = sorted({
+        f"AMFI:{str(item['amfi_code']).strip()}"
+        for item in AMFI_MASTER_FUNDS
+        if str(item.get("amfi_code", "")).strip().isdigit() and not item.get("yahoo_ticker")
+    })
+
+    universe = sorted(set(mapped_tickers + amfi_scheme_tickers + MANUAL_BENCHMARKS))
     return universe
 
 

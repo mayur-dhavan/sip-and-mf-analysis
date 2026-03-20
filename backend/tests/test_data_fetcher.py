@@ -58,3 +58,22 @@ def test_fetch_nav_data_returns_dataframe():
         assert isinstance(df, pd.DataFrame)
     except Exception as e:
         pytest.skip(f"Skipping test due to network/API issue: {e}")
+
+
+def test_extract_amfi_code_formats():
+    """Test AMFI scheme-code ticker parsing."""
+    assert DataFetcher._extract_amfi_code("AMFI:120834") == "120834"
+    assert DataFetcher._extract_amfi_code("120834") == "120834"
+    assert DataFetcher._extract_amfi_code("amfi:abc123") is None
+    assert DataFetcher._extract_amfi_code("AAPL") is None
+
+
+def test_search_funds_marks_amfi_entries_analyzable():
+    """Funds with numeric AMFI scheme code should be analyzable via AMFI NAV source."""
+    fetcher = DataFetcher()
+    results = fetcher.search_funds("Axis Midcap", limit=5)
+    assert len(results) > 0
+    axis_midcap = results[0]
+    assert axis_midcap["amfi_code"].isdigit()
+    assert axis_midcap["is_supported"] is True
+    assert axis_midcap["ticker"].startswith("AMFI:") or bool(axis_midcap.get("yahoo_ticker"))

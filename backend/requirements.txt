@@ -5,6 +5,7 @@ pydantic>=2.5.0
 
 # Data Fetching
 yfinance>=0.2.32
+requests>=2.31.0
 
 # Data Processing
 pandas>=2.1.3

@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import pandas as pd
 import numpy as np
+import hashlib
 from sklearn.ensemble import (
     RandomForestClassifier,
     GradientBoostingClassifier,
@@ -28,7 +29,15 @@ from sklearn.ensemble import (
     StackingClassifier,
 )
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
-from sklearn.metrics import classification_report, accuracy_score, f1_score, roc_auc_score
+from sklearn.metrics import (
+    classification_report,
+    accuracy_score,
+    f1_score,
+    roc_auc_score,
+    precision_score,
+    recall_score,
+    fbeta_score,
+)
 from sklearn.linear_model import LogisticRegression
 import joblib
 from typing import List, Tuple, Optional, Dict, Any
@@ -43,27 +52,45 @@ except ImportError:
 from app.services.data_fetcher import DataFetcher
 from app.services.feature_calculator import FeatureCalculator
 from app.services.feature_config import FEATURE_COLS
-from app.data.amfi_master import AMFI_MASTER_FUNDS
-
-
 MANUAL_BENCHMARKS = ["^NSEI", "^NSMIDCP", "^NSEBANK"]
+MAX_AMFI_TRAINING_SCHEMES = 90
 
 
 def get_training_tickers() -> List[str]:
-    """Build ticker universe from AMFI master list plus benchmark indices."""
+    """Build a broader but bounded training universe from DataFetcher registry."""
+    fetcher = DataFetcher()
+    registry = fetcher._fund_registry
+
     mapped_tickers = sorted({
         str(item["yahoo_ticker"]).strip()
-        for item in AMFI_MASTER_FUNDS
+        for item in registry
         if item.get("yahoo_ticker")
     })
 
-    amfi_scheme_tickers = sorted({
+    amfi_candidates_live = sorted({
         f"AMFI:{str(item['amfi_code']).strip()}"
-        for item in AMFI_MASTER_FUNDS
-        if str(item.get("amfi_code", "")).strip().isdigit() and not item.get("yahoo_ticker")
+        for item in registry
+        if str(item.get("amfi_code", "")).strip().isdigit()
+        and item.get("source") == "mfapi_index"
+        and "direct" in str(item.get("name", "")).lower()
+        and "growth" in str(item.get("name", "")).lower()
     })
 
-    universe = sorted(set(mapped_tickers + amfi_scheme_tickers + MANUAL_BENCHMARKS))
+    amfi_candidates_static_verified = sorted({
+        f"AMFI:{str(item['amfi_code']).strip()}"
+        for item in registry
+        if str(item.get("amfi_code", "")).strip().isdigit()
+        and item.get("source") == "static"
+        and item.get("is_supported")
+    })
+
+    def stable_rank(value: str) -> str:
+        return hashlib.md5(value.encode("utf-8")).hexdigest()
+
+    sampled_amfi_live = sorted(amfi_candidates_live, key=stable_rank)[:MAX_AMFI_TRAINING_SCHEMES]
+    sampled_amfi_static = sorted(amfi_candidates_static_verified, key=stable_rank)[:40]
+
+    universe = sorted(set(mapped_tickers + sampled_amfi_live + sampled_amfi_static + MANUAL_BENCHMARKS))
     return universe
 
 
@@ -90,16 +117,16 @@ def prepare_training_data(tickers: List[str]) -> Tuple[pd.DataFrame, pd.Series, 
             # Calculate technical indicators (all expanded features)
             features_df = feature_calculator.calculate_all_features(nav_df)
             
-            # Calculate 15-day forward returns for labeling
-            features_df['Future_Return'] = (
+            # Calculate 15-day forward returns for labeling.
+            features_df['Future_Return_15'] = (
                 features_df['Close'].shift(-15) - features_df['Close']
             ) / features_df['Close']
-            
-            # Generate labels: 1 if 15-day return < -2%, else 0
-            features_df['Label'] = (features_df['Future_Return'] < -0.02).astype(int)
+
+            # Generate labels: 1 if 15-day return < -2%, else 0.
+            features_df['Label'] = (features_df['Future_Return_15'] < -0.02).astype(int)
             
             # Drop rows with NaN values
-            valid_cols = FEATURE_COLS + ['Label']
+            valid_cols = FEATURE_COLS + ['Label', 'Future_Return_15']
             features_df = features_df.dropna(subset=valid_cols)
             
             if len(features_df) > 0:
@@ -129,19 +156,32 @@ def prepare_training_data(tickers: List[str]) -> Tuple[pd.DataFrame, pd.Series, 
     return combined_features, combined_labels, successful_tickers
 
 
-def optimize_threshold(y_true: pd.Series, proba_high_risk: np.ndarray) -> Tuple[float, float]:
-    """Find probability threshold that maximizes F1 for High_Risk class."""
+def optimize_threshold(y_true: pd.Series, proba_high_risk: np.ndarray) -> Tuple[float, Dict[str, float]]:
+    """Tune threshold with high-risk emphasis while keeping precision floor."""
     best_threshold = 0.5
-    best_f1 = -1.0
+    best_obj = -1.0
+    best_metrics = {"f_beta": 0.0, "precision": 0.0, "recall": 0.0}
 
-    for threshold in np.arange(0.30, 0.71, 0.02):
+    for threshold in np.arange(0.22, 0.66, 0.02):
         preds = (proba_high_risk >= threshold).astype(int)
-        score = f1_score(y_true, preds, pos_label=1)
-        if score > best_f1:
-            best_f1 = score
-            best_threshold = float(threshold)
+        precision = precision_score(y_true, preds, pos_label=1, zero_division=0)
+        recall = recall_score(y_true, preds, pos_label=1, zero_division=0)
+        f_beta = fbeta_score(y_true, preds, beta=1.5, pos_label=1, zero_division=0)
 
-    return best_threshold, float(best_f1)
+        # Penalize thresholds with very low precision to avoid too many false alarms.
+        penalty = max(0.0, 0.45 - precision) * 0.35
+        objective = f_beta - penalty
+
+        if objective > best_obj:
+            best_obj = objective
+            best_threshold = float(threshold)
+            best_metrics = {
+                "f_beta": float(f_beta),
+                "precision": float(precision),
+                "recall": float(recall),
+            }
+
+    return best_threshold, best_metrics
 
 
 def train_and_evaluate(
@@ -266,9 +306,14 @@ def train_and_evaluate(
     print("\nTraining model for threshold tuning...")
     model.fit(X_fit, y_fit)
     val_proba = model.predict_proba(X_val)[:, 1]
-    decision_threshold, best_val_f1 = optimize_threshold(y_val, val_proba)
+    decision_threshold, threshold_metrics = optimize_threshold(y_val, val_proba)
     print(f"  Tuned decision threshold: {decision_threshold:.2f}")
-    print(f"  Validation F1@threshold: {best_val_f1:.3f}")
+    print(
+        "  Validation metrics @ threshold -> "
+        f"F1.5: {threshold_metrics['f_beta']:.3f}, "
+        f"Precision: {threshold_metrics['precision']:.3f}, "
+        f"Recall: {threshold_metrics['recall']:.3f}"
+    )
 
     # Refit on full training set after choosing threshold
     print("\nTraining final model on full training set...")

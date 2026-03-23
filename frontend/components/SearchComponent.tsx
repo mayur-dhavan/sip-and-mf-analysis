@@ -24,10 +24,10 @@ export function SearchComponent({ onSearch, isLoading }: SearchComponentProps) {
       try {
         const results = await searchFunds(ticker);
         setSuggestions(results);
-        setShowSuggestions(results.length > 0);
+        setShowSuggestions(true);
       } catch {
         setSuggestions([]);
-        setShowSuggestions(false);
+        setShowSuggestions(true);
       }
     }, 250);
 
@@ -91,28 +91,34 @@ export function SearchComponent({ onSearch, isLoading }: SearchComponentProps) {
               disabled={isLoading}
               onFocus={() => setShowSuggestions(suggestions.length > 0)}
             />
-            {showSuggestions && suggestions.length > 0 && (
+            {showSuggestions && ticker.trim().length >= 2 && (
               <div className="absolute z-20 mt-2 w-full bg-[var(--card-background)] border border-[var(--card-border)] rounded-xl shadow-lg max-h-64 overflow-auto">
-                {suggestions.map((item) => (
-                  <button
-                    key={item.ticker}
-                    type="button"
-                    onClick={() => handleSuggestionClick(item)}
-                    className="w-full text-left px-4 py-3 hover:bg-[var(--surface)] transition-colors"
-                    disabled={isLoading}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-sm font-medium text-[var(--foreground)]">{item.name}</div>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full ${item.is_supported ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                        {item.is_supported ? 'Analyzable' : 'Lookup only'}
-                      </span>
-                    </div>
-                    <div className="text-xs text-[var(--muted)] font-mono mt-0.5">{item.yahoo_ticker || item.ticker}</div>
-                    <div className="text-[11px] text-[var(--muted)] mt-0.5">
-                      {[item.fund_house, item.category, item.amfi_code ? `AMFI ${item.amfi_code}` : null].filter(Boolean).join(' | ')}
-                    </div>
-                  </button>
-                ))}
+                {suggestions.length > 0 ? (
+                  suggestions.map((item) => (
+                    <button
+                      key={item.ticker}
+                      type="button"
+                      onClick={() => handleSuggestionClick(item)}
+                      className="w-full text-left px-4 py-3 hover:bg-[var(--surface)] transition-colors"
+                      disabled={isLoading}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm font-medium text-[var(--foreground)]">{item.name}</div>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${item.is_supported ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {item.is_supported ? 'Analyzable' : 'Lookup only'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-[var(--muted)] font-mono mt-0.5">{item.yahoo_ticker || item.ticker}</div>
+                      <div className="text-[11px] text-[var(--muted)] mt-0.5">
+                        {[item.fund_house, item.category, item.amfi_code ? `AMFI ${item.amfi_code}` : null].filter(Boolean).join(' | ')}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-4 py-3 text-sm text-[var(--muted)]">
+                    No funds matched this query. Press Analyze to try direct ticker/scheme code lookup.
+                  </div>
+                )}
               </div>
             )}
           </div>

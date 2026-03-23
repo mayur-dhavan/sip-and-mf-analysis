@@ -4,6 +4,7 @@ import joblib
 import os
 from typing import Dict, Union
 import numpy as np
+import pandas as pd
 from pathlib import Path
 from app.services.feature_config import FEATURE_COLS, FEATURE_KEY_MAP
 
@@ -116,8 +117,8 @@ class MLEngine:
         except Exception as e:
             raise PredictionError(f"Prediction with confidence failed: {str(e)}")
 
-    def _build_feature_array(self, features: Dict[str, float]) -> np.ndarray:
-        """Build feature array in model column order with safe value handling."""
+    def _build_feature_array(self, features: Dict[str, float]) -> pd.DataFrame:
+        """Build one-row DataFrame in model column order with safe value handling."""
         feature_values = []
         for col in self._feature_cols:
             key = None
@@ -134,4 +135,4 @@ class MLEngine:
                 val = 0.0
             feature_values.append(val)
 
-        return np.array([feature_values])
+        return pd.DataFrame([feature_values], columns=self._feature_cols)

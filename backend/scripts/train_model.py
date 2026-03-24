@@ -56,6 +56,36 @@ MANUAL_BENCHMARKS = ["^NSEI", "^NSMIDCP", "^NSEBANK"]
 MAX_AMFI_TRAINING_SCHEMES = 90
 
 
+def _generate_adaptive_labels(features_df: pd.DataFrame) -> tuple[pd.Series, Dict[str, float]]:
+    """Create risk labels with adaptive fallback to avoid severe class collapse."""
+    future_return = (features_df['Close'].shift(-15) - features_df['Close']) / features_df['Close']
+    base_labels = (future_return < -0.02).astype(int)
+    base_positive_rate = float(base_labels.mean()) if len(base_labels) else 0.0
+
+    # If base rule produces too few positives, use quantile-based tail risk labeling.
+    if base_positive_rate < 0.12:
+        dynamic_cutoff = float(future_return.quantile(0.20))
+        labels = (future_return <= dynamic_cutoff).astype(int)
+        strategy = "quantile_20"
+    elif base_positive_rate > 0.42:
+        dynamic_cutoff = float(future_return.quantile(0.30))
+        labels = (future_return <= dynamic_cutoff).astype(int)
+        strategy = "quantile_30"
+    else:
+        dynamic_cutoff = -0.02
+        labels = base_labels
+        strategy = "fixed_minus_2pct"
+
+    effective_positive_rate = float(labels.mean()) if len(labels) else 0.0
+    diagnostics = {
+        "base_positive_rate": base_positive_rate,
+        "effective_positive_rate": effective_positive_rate,
+        "dynamic_cutoff": dynamic_cutoff,
+        "strategy": strategy,
+    }
+    return labels, diagnostics
+
+
 def get_training_tickers() -> List[str]:
     """Build a broader but bounded training universe from DataFetcher registry."""
     fetcher = DataFetcher()
@@ -104,6 +134,7 @@ def prepare_training_data(tickers: List[str]) -> Tuple[pd.DataFrame, pd.Series, 
     all_features = []
     all_labels = []
     successful_tickers = []
+    label_diagnostics = []
     
     print(f"Fetching data for {len(tickers)} tickers...")
     
@@ -117,13 +148,11 @@ def prepare_training_data(tickers: List[str]) -> Tuple[pd.DataFrame, pd.Series, 
             # Calculate technical indicators (all expanded features)
             features_df = feature_calculator.calculate_all_features(nav_df)
             
-            # Calculate 15-day forward returns for labeling.
+            # Adaptive label generation prevents a near-all-stable class in low-vol regimes.
+            features_df['Label'], label_info = _generate_adaptive_labels(features_df)
             features_df['Future_Return_15'] = (
                 features_df['Close'].shift(-15) - features_df['Close']
             ) / features_df['Close']
-
-            # Generate labels: 1 if 15-day return < -2%, else 0.
-            features_df['Label'] = (features_df['Future_Return_15'] < -0.02).astype(int)
             
             # Drop rows with NaN values
             valid_cols = FEATURE_COLS + ['Label', 'Future_Return_15']
@@ -133,6 +162,7 @@ def prepare_training_data(tickers: List[str]) -> Tuple[pd.DataFrame, pd.Series, 
                 all_features.append(features_df[FEATURE_COLS])
                 all_labels.append(features_df['Label'])
                 successful_tickers.append(ticker)
+                label_diagnostics.append({"ticker": ticker, **label_info})
                 print(f"    + {len(features_df)} samples collected")
             else:
                 print(f"    x No valid samples after dropping NaN")
@@ -152,6 +182,17 @@ def prepare_training_data(tickers: List[str]) -> Tuple[pd.DataFrame, pd.Series, 
     print(f"High_Risk samples (label=1): {int(combined_labels.sum())}")
     print(f"Stable samples (label=0): {len(combined_labels) - int(combined_labels.sum())}")
     print(f"Features used: {len(FEATURE_COLS)} -> {FEATURE_COLS}")
+
+    if label_diagnostics:
+        avg_base = np.mean([d["base_positive_rate"] for d in label_diagnostics])
+        avg_eff = np.mean([d["effective_positive_rate"] for d in label_diagnostics])
+        quantile_count = sum(1 for d in label_diagnostics if d["strategy"] != "fixed_minus_2pct")
+        print(
+            "Label diagnostics -> "
+            f"Avg base positive rate: {avg_base:.3f}, "
+            f"Avg effective positive rate: {avg_eff:.3f}, "
+            f"Adaptive schemes: {quantile_count}/{len(label_diagnostics)}"
+        )
     
     return combined_features, combined_labels, successful_tickers
 
@@ -162,15 +203,20 @@ def optimize_threshold(y_true: pd.Series, proba_high_risk: np.ndarray) -> Tuple[
     best_obj = -1.0
     best_metrics = {"f_beta": 0.0, "precision": 0.0, "recall": 0.0}
 
-    for threshold in np.arange(0.22, 0.66, 0.02):
+    target_positive_rate = float(np.mean(y_true))
+
+    for threshold in np.arange(0.18, 0.70, 0.02):
         preds = (proba_high_risk >= threshold).astype(int)
         precision = precision_score(y_true, preds, pos_label=1, zero_division=0)
         recall = recall_score(y_true, preds, pos_label=1, zero_division=0)
         f_beta = fbeta_score(y_true, preds, beta=1.5, pos_label=1, zero_division=0)
+        predicted_positive_rate = float(np.mean(preds))
 
         # Penalize thresholds with very low precision to avoid too many false alarms.
-        penalty = max(0.0, 0.45 - precision) * 0.35
-        objective = f_beta - penalty
+        precision_penalty = max(0.0, 0.42 - precision) * 0.35
+        recall_penalty = max(0.0, 0.45 - recall) * 0.25
+        rate_penalty = abs(predicted_positive_rate - target_positive_rate) * 0.18
+        objective = f_beta - precision_penalty - recall_penalty - rate_penalty
 
         if objective > best_obj:
             best_obj = objective
@@ -179,6 +225,8 @@ def optimize_threshold(y_true: pd.Series, proba_high_risk: np.ndarray) -> Tuple[
                 "f_beta": float(f_beta),
                 "precision": float(precision),
                 "recall": float(recall),
+                "predicted_positive_rate": float(predicted_positive_rate),
+                "target_positive_rate": float(target_positive_rate),
             }
 
     return best_threshold, best_metrics

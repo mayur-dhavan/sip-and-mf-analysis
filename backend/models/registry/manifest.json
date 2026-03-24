@@ -1,6 +1,6 @@
 {
   "created_at": "2026-03-20T13:05:54.021697+00:00",
-  "updated_at": "2026-03-20T13:05:54.414443+00:00",
+  "updated_at": "2026-03-24T09:44:48.689288+00:00",
   "champion_version": "v20260320T130554Z",
   "versions": [
     {
@@ -41,6 +41,78 @@
         ]
       },
       "score": 0.8428826560365902
+    },
+    {
+      "version_id": "v20260324T094448Z",
+      "artifact_path": "D:\\Mayur D\\SIP and MF Analysis\\backend\\models\\registry\\versions\\v20260324T094448Z_volatility_model.pkl",
+      "created_at": "2026-03-24T09:44:48.297621+00:00",
+      "status": "rejected",
+      "metrics": {
+        "accuracy": 0.8483558994197292,
+        "f1_weighted": 0.8567764643707036,
+        "roc_auc": 0.916698934046321,
+        "cv_f1_mean": 0.8349989260536412,
+        "cv_f1_std": 0.004066122049890102,
+        "decision_threshold": 0.5799999999999998,
+        "high_risk_precision": 0.5816618911174785,
+        "high_risk_recall": 0.8023715415019763,
+        "high_risk_f1": 0.6744186046511628,
+        "stable_precision": 0.9470058293587705,
+        "stable_recall": 0.8595478595478595,
+        "stable_f1": 0.9011598587997983,
+        "ticker_universe_size": 146,
+        "successful_ticker_count": 44
+      },
+      "metadata": {
+        "training_period": "5y",
+        "successful_tickers": [
+          "0P0000XV5N.BO",
+          "0P0000XVGR.BO",
+          "0P0000XVKK.BO",
+          "0P0000XVKR.BO",
+          "0P0000XVKY.BO",
+          "0P0000XVL1.BO",
+          "0P0000XVLR.BO",
+          "0P0001BAP8.BO",
+          "AMFI:118416",
+          "AMFI:118553",
+          "AMFI:118554",
+          "AMFI:118560",
+          "AMFI:118569",
+          "AMFI:118672",
+          "AMFI:118687",
+          "AMFI:118701",
+          "AMFI:118715",
+          "AMFI:118732",
+          "AMFI:118814",
+          "AMFI:119505",
+          "AMFI:119551",
+          "AMFI:1205031",
+          "AMFI:120716",
+          "AMFI:120743",
+          "AMFI:120861",
+          "AMFI:122459",
+          "AMFI:122639",
+          "AMFI:123457",
+          "AMFI:124112",
+          "AMFI:124114",
+          "AMFI:129001",
+          "AMFI:133265",
+          "AMFI:133488",
+          "AMFI:133791",
+          "AMFI:134363",
+          "AMFI:138330",
+          "AMFI:140298",
+          "AMFI:140603",
+          "AMFI:143612",
+          "AMFI:148419",
+          "AMFI:149664",
+          "^NSEBANK",
+          "^NSEI",
+          "^NSMIDCP"
+        ]
+      },
+      "score": 0.802330559321122
     }
   ]
 }

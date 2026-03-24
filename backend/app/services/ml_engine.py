@@ -48,7 +48,15 @@ class MLEngine:
             if isinstance(artifact, dict) and 'model' in artifact:
                 self._model = artifact['model']
                 self._feature_cols = artifact.get('feature_cols', FEATURE_COLS)
-                self._decision_threshold = float(artifact.get('decision_threshold', 0.5))
+                loaded_threshold = float(artifact.get('decision_threshold', 0.5))
+                override = os.getenv("MODEL_DECISION_THRESHOLD_OVERRIDE")
+                if override is not None:
+                    try:
+                        loaded_threshold = float(override)
+                    except ValueError:
+                        pass
+                # Guard against pathological thresholds that can collapse outputs.
+                self._decision_threshold = float(np.clip(loaded_threshold, 0.15, 0.85))
             else:
                 self._model = artifact
                 self._feature_cols = FEATURE_COLS
@@ -109,6 +117,13 @@ class MLEngine:
                     high_risk_probability = float(probs[1])
                 else:
                     high_risk_probability = float(probs[0])
+            elif hasattr(self._model, "decision_function"):
+                score = float(self._model.decision_function(feature_array)[0])
+                high_risk_probability = float(1.0 / (1.0 + np.exp(-score)))
+            else:
+                high_risk_probability = float(self._model.predict(feature_array)[0])
+
+            high_risk_probability = float(np.clip(high_risk_probability, 0.0, 1.0))
 
             prediction = int(high_risk_probability >= self._decision_threshold)
 

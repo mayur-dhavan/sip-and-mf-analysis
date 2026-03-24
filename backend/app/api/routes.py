@@ -148,33 +148,69 @@ async def _process_prediction(ticker: str) -> PredictionResponse:
         nav_df
     )
     
-    # Step 3: Extract latest values (most recent non-NaN) for all features
-    def safe_last(column_name: str):
-        if column_name not in features_df.columns:
+    # Step 3: Extract latest complete feature row to avoid mixed-date signal leakage.
+    required_feature_cols = [
+        'RSI',
+        'SMA_50',
+        'SMA_20',
+        'EMA_20',
+        'Rolling_Volatility_30',
+        'Rolling_Volatility_10',
+        'Daily_Return',
+        'ROC_10',
+        'MACD',
+        'MACD_Signal',
+        'MACD_Hist',
+        'BB_Width',
+        'NAV_to_SMA50_Ratio',
+        'Volatility_Ratio',
+        'Return_5',
+        'Return_20',
+        'Sharpe_30',
+        'ZScore_20',
+        'Drawdown_60',
+    ]
+    available_feature_cols = [col for col in required_feature_cols if col in features_df.columns]
+    if not available_feature_cols:
+        raise PredictionError("No feature columns available for prediction")
+
+    complete_rows = features_df.dropna(subset=available_feature_cols)
+    if complete_rows.empty:
+        # Fallback for sparse feeds: use latest row and default missing/NaN fields to 0.
+        latest = features_df.iloc[-1]
+    else:
+        latest = complete_rows.iloc[-1]
+
+    def latest_value(column_name: str) -> float:
+        value = latest.get(column_name, 0.0)
+        if value is None:
             return 0.0
-        dropped = features_df[column_name].dropna()
-        return float(dropped.iloc[-1]) if len(dropped) > 0 else 0.0
-    
+        try:
+            numeric = float(value)
+            return numeric if numeric == numeric else 0.0
+        except Exception:
+            return 0.0
+
     latest_features = {
-        'rsi': safe_last('RSI'),
-        'sma_50': safe_last('SMA_50'),
-        'sma_20': safe_last('SMA_20'),
-        'ema_20': safe_last('EMA_20'),
-        'rolling_volatility_30': safe_last('Rolling_Volatility_30'),
-        'rolling_volatility_10': safe_last('Rolling_Volatility_10'),
-        'daily_return': safe_last('Daily_Return'),
-        'roc_10': safe_last('ROC_10'),
-        'macd': safe_last('MACD'),
-        'macd_signal': safe_last('MACD_Signal'),
-        'macd_hist': safe_last('MACD_Hist'),
-        'bb_width': safe_last('BB_Width'),
-        'nav_to_sma50_ratio': safe_last('NAV_to_SMA50_Ratio'),
-        'volatility_ratio': safe_last('Volatility_Ratio'),
-        'return_5': safe_last('Return_5'),
-        'return_20': safe_last('Return_20'),
-        'sharpe_30': safe_last('Sharpe_30'),
-        'zscore_20': safe_last('ZScore_20'),
-        'drawdown_60': safe_last('Drawdown_60'),
+        'rsi': latest_value('RSI'),
+        'sma_50': latest_value('SMA_50'),
+        'sma_20': latest_value('SMA_20'),
+        'ema_20': latest_value('EMA_20'),
+        'rolling_volatility_30': latest_value('Rolling_Volatility_30'),
+        'rolling_volatility_10': latest_value('Rolling_Volatility_10'),
+        'daily_return': latest_value('Daily_Return'),
+        'roc_10': latest_value('ROC_10'),
+        'macd': latest_value('MACD'),
+        'macd_signal': latest_value('MACD_Signal'),
+        'macd_hist': latest_value('MACD_Hist'),
+        'bb_width': latest_value('BB_Width'),
+        'nav_to_sma50_ratio': latest_value('NAV_to_SMA50_Ratio'),
+        'volatility_ratio': latest_value('Volatility_Ratio'),
+        'return_5': latest_value('Return_5'),
+        'return_20': latest_value('Return_20'),
+        'sharpe_30': latest_value('Sharpe_30'),
+        'zscore_20': latest_value('ZScore_20'),
+        'drawdown_60': latest_value('Drawdown_60'),
     }
     
     # Step 4: Predict volatility

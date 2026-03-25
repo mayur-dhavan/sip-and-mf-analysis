@@ -273,6 +273,17 @@ class DataFetcher:
 
                 raise amfi_error
 
+        # For Yahoo tickers with a known AMFI mapping, try AMFI first.
+        # AMFI is faster and doesn't rate-limit, unlike Yahoo Finance.
+        mapped_amfi = self._yahoo_to_amfi.get(normalized_ticker.upper())
+        if mapped_amfi and not self._is_amfi_temporarily_unavailable(mapped_amfi):
+            logger.info("Trying AMFI-first for %s (scheme %s)", normalized_ticker, mapped_amfi)
+            try:
+                return self._fetch_amfi_nav_data(mapped_amfi, period)
+            except (TickerNotFoundError, DataSourceUnavailableError) as amfi_err:
+                logger.info("AMFI-first failed for %s: %s — falling back to yfinance", mapped_amfi, amfi_err)
+                # Fall through to yfinance
+
         try:
             with timeout(10):
                 # Fetch data using yfinance
@@ -296,47 +307,17 @@ class DataFetcher:
         except TimeoutException as e:
             raise TimeoutError(str(e))
         except TickerNotFoundError:
-            # Fallback: try AMFI code if this Yahoo ticker is mapped in registry.
-            mapped_amfi = self._yahoo_to_amfi.get(normalized_ticker.upper())
-            if mapped_amfi:
-                logger.info("TickerNotFound for %s, trying AMFI fallback %s", normalized_ticker, mapped_amfi)
-                try:
-                    return self._fetch_amfi_nav_data(mapped_amfi, period)
-                except TickerNotFoundError:
-                    self._mark_amfi_temporarily_unavailable(mapped_amfi)
-                    raise
             raise
         except Exception as e:
             err_msg = str(e).lower()
-            # yfinance raises generic exceptions for delisted/not-found symbols;
-            # treat those as TickerNotFoundError so the AMFI fallback triggers.
             is_not_found = any(kw in err_msg for kw in (
                 "not found", "delisted", "no data found", "no price data",
             ))
-
-            # Always try AMFI fallback when a mapping exists, regardless of error type.
-            # This handles rate-limiting, transient Yahoo failures, 404s, etc.
-            mapped_amfi = self._yahoo_to_amfi.get(normalized_ticker.upper())
-            logger.info("yfinance failed for %s: %s | AMFI mapping: %s", normalized_ticker, err_msg[:80], mapped_amfi)
-            if mapped_amfi and not self._is_amfi_temporarily_unavailable(mapped_amfi):
-                try:
-                    logger.info("Attempting AMFI fallback for scheme %s", mapped_amfi)
-                    return self._fetch_amfi_nav_data(mapped_amfi, period)
-                except TickerNotFoundError:
-                    self._mark_amfi_temporarily_unavailable(mapped_amfi)
-                    raise
-                except DataSourceUnavailableError as amfi_err:
-                    logger.warning("AMFI fallback also failed for %s: %s", mapped_amfi, amfi_err)
-                    # AMFI also failed – fall through to original error handling
-                    pass
-            elif mapped_amfi:
-                logger.warning("AMFI scheme %s is in cooldown, skipping fallback", mapped_amfi)
-
             if is_not_found:
                 raise TickerNotFoundError(
                     f"No data found for ticker '{normalized_ticker}'. Please verify the ticker symbol."
                 )
-            # Handle network errors, API failures, etc.
+            logger.warning("yfinance failed for %s: %s", normalized_ticker, err_msg[:100])
             raise DataSourceUnavailableError(
                 f"Failed to fetch data from yfinance: {str(e)}"
             )

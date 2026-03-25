@@ -63,23 +63,12 @@ async def predict_volatility(request: PredictionRequest):
     Requirements: 5.1, 5.2, 5.3, 5.5, 4.4, 4.5
     """
     try:
-        # Wrap entire process in 45-second timeout with retry for transient failures
-        last_error = None
-        for attempt in range(2):
-            try:
-                result = await asyncio.wait_for(
-                    _process_prediction(request.ticker),
-                    timeout=40.0
-                )
-                return result
-            except DataSourceUnavailableError as e:
-                last_error = e
-                if attempt == 0:
-                    logger.info("Attempt 1 failed for %s: %s — retrying", request.ticker, e)
-                    await asyncio.sleep(1.5)
-                    continue
-                raise
-        raise last_error  # should not reach here
+        # Wrap entire process in 40-second timeout
+        result = await asyncio.wait_for(
+            _process_prediction(request.ticker),
+            timeout=40.0
+        )
+        return result
         
     except asyncio.TimeoutError:
         # Handle timeout → 504

@@ -82,7 +82,8 @@ export async function predictVolatility(ticker: string): Promise<PredictionData>
       let errorData: ApiError | null = null;
       try {
         const errorJson = await response.json();
-        errorData = errorJson.error || errorJson;
+        // FastAPI returns errors as {"detail": {"code": "...", "message": "..."}}
+        errorData = errorJson.detail || errorJson.error || errorJson;
       } catch {
         // If JSON parsing fails, use status text
       }

@@ -52,8 +52,9 @@ except ImportError:
 from app.services.data_fetcher import DataFetcher
 from app.services.feature_calculator import FeatureCalculator
 from app.services.feature_config import FEATURE_COLS
-MANUAL_BENCHMARKS = ["^NSEI", "^NSMIDCP", "^NSEBANK"]
-MAX_AMFI_TRAINING_SCHEMES = 90
+MANUAL_BENCHMARKS = ["^NSEI", "^NSMIDCP", "^NSEBANK", "^BSESN", "^CNXIT"]
+MAX_AMFI_TRAINING_SCHEMES = 150
+MIN_SAMPLES_PER_TICKER = 100
 
 
 def _generate_adaptive_labels(features_df: pd.DataFrame) -> tuple[pd.Series, Dict[str, float]]:
@@ -118,9 +119,12 @@ def get_training_tickers() -> List[str]:
         return hashlib.md5(value.encode("utf-8")).hexdigest()
 
     sampled_amfi_live = sorted(amfi_candidates_live, key=stable_rank)[:MAX_AMFI_TRAINING_SCHEMES]
-    sampled_amfi_static = sorted(amfi_candidates_static_verified, key=stable_rank)[:40]
+    sampled_amfi_static = sorted(amfi_candidates_static_verified, key=stable_rank)[:60]
 
     universe = sorted(set(mapped_tickers + sampled_amfi_live + sampled_amfi_static + MANUAL_BENCHMARKS))
+    print(f"  Training universe composition: {len(mapped_tickers)} Yahoo tickers, "
+          f"{len(sampled_amfi_static)} static AMFI, {len(sampled_amfi_live)} live AMFI, "
+          f"{len(MANUAL_BENCHMARKS)} benchmarks -> {len(universe)} total unique")
     return universe
 
 
@@ -142,8 +146,19 @@ def prepare_training_data(tickers: List[str]) -> Tuple[pd.DataFrame, pd.Series, 
         try:
             print(f"  Processing {ticker}...")
             
-            # Fetch NAV data
-            nav_df = data_fetcher.fetch_nav_data(ticker, period="5y")
+            # Fetch NAV data - try multiple periods for resilience
+            nav_df = None
+            for period in ["5y", "3y", "2y"]:
+                try:
+                    nav_df = data_fetcher.fetch_nav_data(ticker, period=period)
+                    if nav_df is not None and len(nav_df) >= 60:
+                        break
+                except Exception:
+                    continue
+            
+            if nav_df is None or len(nav_df) < 60:
+                print(f"    x Insufficient data (need >= 60 days)")
+                continue
             
             # Calculate technical indicators (all expanded features)
             features_df = feature_calculator.calculate_all_features(nav_df)
@@ -158,12 +173,19 @@ def prepare_training_data(tickers: List[str]) -> Tuple[pd.DataFrame, pd.Series, 
             valid_cols = FEATURE_COLS + ['Label', 'Future_Return_15']
             features_df = features_df.dropna(subset=valid_cols)
             
-            if len(features_df) > 0:
+            if len(features_df) >= MIN_SAMPLES_PER_TICKER:
                 all_features.append(features_df[FEATURE_COLS])
                 all_labels.append(features_df['Label'])
                 successful_tickers.append(ticker)
                 label_diagnostics.append({"ticker": ticker, **label_info})
                 print(f"    + {len(features_df)} samples collected")
+            elif len(features_df) > 0:
+                # Accept smaller contributions but log it
+                all_features.append(features_df[FEATURE_COLS])
+                all_labels.append(features_df['Label'])
+                successful_tickers.append(ticker)
+                label_diagnostics.append({"ticker": ticker, **label_info})
+                print(f"    ~ {len(features_df)} samples collected (below ideal {MIN_SAMPLES_PER_TICKER})")
             else:
                 print(f"    x No valid samples after dropping NaN")
                 

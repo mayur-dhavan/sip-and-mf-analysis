@@ -30,6 +30,13 @@ export interface PredictionData {
   dailyReturn?: number;
   sma20?: number;
   sma50?: number;
+  sharpe30?: number;
+  drawdown60?: number;
+  return5?: number;
+  return20?: number;
+  zscore20?: number;
+  volatilityRatio?: number;
+  navToSma50Ratio?: number;
 }
 
 export interface FundSearchResult {

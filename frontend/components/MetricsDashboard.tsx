@@ -53,6 +53,15 @@ function ReturnIcon() {
   );
 }
 
+function TrendIcon() {
+  return (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth={2} fill="none" />
+    </svg>
+  );
+}
+
 function getRsiVariant(rsi: number): 'success' | 'danger' | 'warning' | 'default' {
   if (rsi > 70) return 'danger';
   if (rsi < 30) return 'success';
@@ -66,6 +75,22 @@ function getRsiLabel(rsi: number): string {
   return 'Neutral zone';
 }
 
+function RiskBar({ probability }: { probability: number }) {
+  const pct = Math.round(probability * 100);
+  const barColor = pct > 65 ? 'var(--danger)' : pct > 35 ? 'var(--warning)' : 'var(--success)';
+  return (
+    <div className="mt-3">
+      <div className="flex justify-between text-xs mb-1">
+        <span className="text-[var(--muted)]">Risk Level</span>
+        <span className="font-semibold" style={{ color: barColor }}>{pct}%</span>
+      </div>
+      <div className="w-full h-2 rounded-full bg-[var(--surface)]">
+        <div className="h-2 rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: barColor }} />
+      </div>
+    </div>
+  );
+}
+
 export function MetricsDashboard({ data }: MetricsDashboardProps) {
   const predictionVariant = data.prediction === 'Stable' ? 'success' : 'danger';
   const predictionDisplay = data.prediction === 'High_Risk' ? 'High Risk' : 'Stable';
@@ -74,18 +99,44 @@ export function MetricsDashboard({ data }: MetricsDashboardProps) {
 
   return (
     <div className="space-y-4">
-      {/* Primary metrics row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div className="animate-fade-in-up stagger-1">
-          <MetricCard
-            title="AI Risk Prediction"
-            value={predictionDisplay}
-            variant={predictionVariant}
-            icon={<ShieldIcon />}
-            subtitle="Next 15 days outlook"
-          />
+      {/* Risk Overview Banner */}
+      <div className={`rounded-xl border p-5 flex flex-col sm:flex-row sm:items-center gap-4 animate-fade-in-up ${
+        data.prediction === 'Stable'
+          ? 'bg-[var(--success-light)] border-[var(--success)]'
+          : 'bg-[var(--danger-light)] border-[var(--danger)]'
+      }`}>
+        <div className="flex items-center gap-3 flex-1">
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+            data.prediction === 'Stable' ? 'bg-[var(--success)] bg-opacity-20' : 'bg-[var(--danger)] bg-opacity-20'
+          }`}>
+            <ShieldIcon />
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-[var(--muted)]">AI Risk Prediction — Next 15 Days</p>
+            <p className={`text-2xl font-bold ${data.prediction === 'Stable' ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
+              {predictionDisplay}
+            </p>
+          </div>
         </div>
-        <div className="animate-fade-in-up stagger-2">
+        <div className="flex gap-6 sm:gap-8">
+          <div className="text-center">
+            <p className="text-xs text-[var(--muted)]">Confidence</p>
+            <p className="text-lg font-bold text-[var(--foreground)]">
+              {data.modelConfidence !== undefined ? `${(data.modelConfidence * 100).toFixed(0)}%` : 'N/A'}
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-[var(--muted)]">Risk Prob.</p>
+            <p className="text-lg font-bold text-[var(--foreground)]">
+              {data.riskProbability !== undefined ? `${(data.riskProbability * 100).toFixed(0)}%` : 'N/A'}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Primary metrics row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="animate-fade-in-up stagger-1">
           <MetricCard
             title="Current NAV"
             value={`₹${data.currentNav.toFixed(2)}`}
@@ -93,7 +144,7 @@ export function MetricsDashboard({ data }: MetricsDashboardProps) {
             subtitle={data.sma50 ? `SMA₅₀: ₹${data.sma50.toFixed(2)}` : undefined}
           />
         </div>
-        <div className="animate-fade-in-up stagger-3">
+        <div className="animate-fade-in-up stagger-2">
           <MetricCard
             title="RSI (14-day)"
             value={data.currentRsi.toFixed(1)}
@@ -102,19 +153,28 @@ export function MetricsDashboard({ data }: MetricsDashboardProps) {
             subtitle={getRsiLabel(data.currentRsi)}
           />
         </div>
-      </div>
-
-      {/* Secondary metrics row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <div className="animate-fade-in-up stagger-4">
+        <div className="animate-fade-in-up stagger-3">
           <MetricCard
             title="30-Day Volatility"
             value={data.currentVolatility.toFixed(4)}
             variant="default"
             icon={<VolatilityIcon />}
-            subtitle="Rolling std deviation"
+            subtitle={data.volatilityRatio !== undefined ? `Vol Ratio: ${data.volatilityRatio.toFixed(2)}` : 'Rolling std deviation'}
           />
         </div>
+        <div className="animate-fade-in-up stagger-4">
+          <MetricCard
+            title="Daily Return"
+            value={data.dailyReturn !== undefined ? `${(data.dailyReturn * 100).toFixed(2)}%` : 'N/A'}
+            variant={dailyReturnVariant}
+            icon={<ReturnIcon />}
+            subtitle={data.bbWidth ? `BB Width: ${data.bbWidth.toFixed(4)}` : undefined}
+          />
+        </div>
+      </div>
+
+      {/* Secondary metrics row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {data.currentMacd !== undefined && data.currentMacd !== null && (
           <div className="animate-fade-in-up stagger-5">
             <MetricCard
@@ -126,18 +186,47 @@ export function MetricsDashboard({ data }: MetricsDashboardProps) {
             />
           </div>
         )}
-        {data.dailyReturn !== undefined && data.dailyReturn !== null && (
+        {data.return20 !== undefined && data.return20 !== null && (
+          <div className="animate-fade-in-up stagger-5">
+            <MetricCard
+              title="20-Day Return"
+              value={`${(data.return20 * 100).toFixed(2)}%`}
+              variant={data.return20 >= 0 ? 'success' : 'danger'}
+              icon={<TrendIcon />}
+              subtitle={data.return5 !== undefined ? `5-Day: ${(data.return5 * 100).toFixed(2)}%` : undefined}
+            />
+          </div>
+        )}
+        {data.sharpe30 !== undefined && data.sharpe30 !== null && (
           <div className="animate-fade-in-up stagger-6">
             <MetricCard
-              title="Daily Return"
-              value={`${(data.dailyReturn * 100).toFixed(2)}%`}
-              variant={dailyReturnVariant}
-              icon={<ReturnIcon />}
-              subtitle={data.bbWidth ? `BB Width: ${data.bbWidth.toFixed(4)}` : undefined}
+              title="Sharpe Ratio (30D)"
+              value={data.sharpe30.toFixed(2)}
+              variant={data.sharpe30 > 1 ? 'success' : data.sharpe30 < 0 ? 'danger' : 'warning'}
+              icon={<RsiIcon />}
+              subtitle={data.sharpe30 > 1 ? 'Good risk-adjusted return' : data.sharpe30 < 0 ? 'Negative risk-adjusted return' : 'Moderate'}
+            />
+          </div>
+        )}
+        {data.drawdown60 !== undefined && data.drawdown60 !== null && (
+          <div className="animate-fade-in-up stagger-6">
+            <MetricCard
+              title="Max Drawdown (60D)"
+              value={`${(data.drawdown60 * 100).toFixed(2)}%`}
+              variant={data.drawdown60 < -0.10 ? 'danger' : data.drawdown60 < -0.05 ? 'warning' : 'success'}
+              icon={<VolatilityIcon />}
+              subtitle="From 60-day rolling peak"
             />
           </div>
         )}
       </div>
+
+      {/* Risk probability bar */}
+      {data.riskProbability !== undefined && (
+        <div className="bg-[var(--card-background)] rounded-xl border border-[var(--card-border)] p-5 animate-fade-in-up">
+          <RiskBar probability={data.riskProbability} />
+        </div>
+      )}
     </div>
   );
 }

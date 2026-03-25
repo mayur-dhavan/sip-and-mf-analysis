@@ -6,6 +6,7 @@ import { LoadingSpinner } from '@/components/LoadingSpinner';
 import { ErrorMessage } from '@/components/ErrorMessage';
 import { MetricsDashboard } from '@/components/MetricsDashboard';
 import { ChartComponent } from '@/components/ChartComponent';
+import { SipCalculator } from '@/components/SipCalculator';
 import { predictVolatility, ApiServiceError } from '@/services/api';
 import { PredictionData } from '@/types';
 
@@ -86,7 +87,7 @@ export default function Home() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
           </div>
-          <span className="font-semibold text-sm text-[var(--foreground)]">MF Volatility Analyzer</span>
+          <span className="font-semibold text-sm text-[var(--foreground)]">SIP & MF Analyzer</span>
         </div>
       </nav>
 
@@ -94,10 +95,10 @@ export default function Home() {
         {/* Hero / Header */}
         <header className="text-center mb-10">
           <h1 className="text-3xl sm:text-4xl font-bold text-[var(--foreground)] mb-3 tracking-tight">
-            Mutual Fund Volatility Analyzer
+            SIP & Mutual Fund Analyzer
           </h1>
           <p className="text-[var(--muted)] max-w-xl mx-auto text-sm sm:text-base">
-            AI-powered risk analysis for Indian Mutual Funds using machine learning
+            AI-powered risk analysis & SIP planning for Indian Mutual Funds with 19 technical indicators
             with 19 technical indicators and a stacked ensemble model.
           </p>
         </header>
@@ -135,6 +136,9 @@ export default function Home() {
             {/* Chart */}
             <ChartComponent data={chartData} />
 
+            {/* SIP Calculator */}
+            <SipCalculator currentNav={data.currentNav} fundName={data.fundName || lastSearchedFundName} />
+
             {/* Analysis Summary Card */}
             <div className="bg-[var(--card-background)] rounded-xl border border-[var(--card-border)] p-6 animate-fade-in-up">
               <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Analysis Summary</h3>
@@ -145,7 +149,7 @@ export default function Home() {
                 </div>
                 <div>
                   <p className="text-xs text-[var(--muted)] mb-0.5">Model</p>
-                  <p className="font-semibold text-[var(--foreground)]">XGBoost + RF Ensemble</p>
+                  <p className="font-semibold text-[var(--foreground)]">Stacked Ensemble</p>
                 </div>
                 <div>
                   <p className="text-xs text-[var(--muted)] mb-0.5">Features Used</p>
@@ -156,24 +160,13 @@ export default function Home() {
                   <p className="font-semibold text-[var(--foreground)]">15 days</p>
                 </div>
               </div>
-              <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="bg-[var(--surface)] rounded-lg p-3">
-                  <p className="text-xs text-[var(--muted)] mb-1">High Risk Probability</p>
-                  <p className="text-base font-semibold text-[var(--foreground)]">
-                    {data.riskProbability !== undefined ? `${(data.riskProbability * 100).toFixed(1)}%` : 'N/A'}
-                  </p>
-                </div>
-                <div className="bg-[var(--surface)] rounded-lg p-3">
-                  <p className="text-xs text-[var(--muted)] mb-1">Model Confidence</p>
-                  <p className="text-base font-semibold text-[var(--foreground)]">
-                    {data.modelConfidence !== undefined ? `${(data.modelConfidence * 100).toFixed(1)}%` : 'N/A'}
-                  </p>
-                </div>
-              </div>
               {data.analysisSummary && (
-                <p className="mt-4 text-sm text-[var(--foreground)] leading-relaxed">
-                  {data.analysisSummary}
-                </p>
+                <div className="mt-5 p-4 bg-[var(--surface)] rounded-lg">
+                  <p className="text-xs font-medium text-[var(--muted)] mb-2">AI Interpretation</p>
+                  <p className="text-sm text-[var(--foreground)] leading-relaxed">
+                    {data.analysisSummary}
+                  </p>
+                </div>
               )}
             </div>
           </div>
@@ -181,17 +174,53 @@ export default function Home() {
 
         {/* Empty State */}
         {!loading && !error && !data && (
-          <div className="text-center py-20 animate-fade-in-up">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[var(--surface)] flex items-center justify-center">
-              <svg className="w-8 h-8 text-[var(--muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
+          <div className="space-y-8 animate-fade-in-up">
+            <div className="text-center py-12">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[var(--surface)] flex items-center justify-center">
+                <svg className="w-8 h-8 text-[var(--muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <h3 className="text-sm font-semibold text-[var(--foreground)]">No analysis yet</h3>
+              <p className="mt-1 text-sm text-[var(--muted)] max-w-sm mx-auto">
+                Search for a mutual fund above to get AI-powered risk analysis, technical indicators, and SIP projections.
+              </p>
             </div>
-            <h3 className="text-sm font-semibold text-[var(--foreground)]">No analysis yet</h3>
-            <p className="mt-1 text-sm text-[var(--muted)] max-w-sm mx-auto">
-              Enter a mutual fund ticker symbol above to analyze its volatility and risk prediction.
-            </p>
+
+            {/* Features overview */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-[var(--card-background)] rounded-xl border border-[var(--card-border)] p-5 text-center">
+                <div className="w-10 h-10 mx-auto mb-3 rounded-lg bg-[var(--accent-light)] flex items-center justify-center">
+                  <svg className="w-5 h-5 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                </div>
+                <h4 className="text-sm font-semibold text-[var(--foreground)]">AI Risk Prediction</h4>
+                <p className="text-xs text-[var(--muted)] mt-1">Stacked ensemble model predicts 15-day risk outlook</p>
+              </div>
+              <div className="bg-[var(--card-background)] rounded-xl border border-[var(--card-border)] p-5 text-center">
+                <div className="w-10 h-10 mx-auto mb-3 rounded-lg bg-[var(--success-light)] flex items-center justify-center">
+                  <svg className="w-5 h-5 text-[var(--success)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                </div>
+                <h4 className="text-sm font-semibold text-[var(--foreground)]">19 Technical Indicators</h4>
+                <p className="text-xs text-[var(--muted)] mt-1">RSI, MACD, Sharpe, Drawdown, Bollinger Bands & more</p>
+              </div>
+              <div className="bg-[var(--card-background)] rounded-xl border border-[var(--card-border)] p-5 text-center">
+                <div className="w-10 h-10 mx-auto mb-3 rounded-lg bg-[var(--warning-light)] flex items-center justify-center">
+                  <svg className="w-5 h-5 text-[var(--warning)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h4 className="text-sm font-semibold text-[var(--foreground)]">SIP Calculator</h4>
+                <p className="text-xs text-[var(--muted)] mt-1">Project your SIP returns with customizable parameters</p>
+              </div>
+            </div>
+
+            {/* Standalone SIP calculator */}
+            <SipCalculator />
           </div>
         )}
       </main>
@@ -199,7 +228,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="mt-16 border-t border-[var(--card-border)] py-6">
         <p className="text-center text-xs text-[var(--muted)]">
-          Powered by ML Ensemble (XGBoost + Random Forest) &middot; 92% accuracy &middot; Not financial advice
+          Powered by ML Stacked Ensemble (XGBoost + RF + ExtraTrees) &middot; 19 Technical Indicators &middot; Not financial advice
         </p>
       </footer>
     </div>

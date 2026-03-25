@@ -270,6 +270,13 @@ async def _process_prediction(ticker: str) -> PredictionResponse:
         daily_return=float(latest_features['daily_return']),
         sma_20=float(latest_features['sma_20']),
         sma_50=float(latest_features['sma_50']),
+        sharpe_30=float(latest_features['sharpe_30']),
+        drawdown_60=float(latest_features['drawdown_60']),
+        return_5=float(latest_features['return_5']),
+        return_20=float(latest_features['return_20']),
+        zscore_20=float(latest_features['zscore_20']),
+        volatility_ratio=float(latest_features['volatility_ratio']),
+        nav_to_sma50_ratio=float(latest_features['nav_to_sma50_ratio']),
     )
 
 

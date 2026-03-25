@@ -37,7 +37,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
     return (
       <div className="bg-[var(--card-background)] border border-[var(--card-border)] rounded-xl shadow-xl p-4">
         <p className="text-xs font-medium text-[var(--muted)] mb-2">
-          {new Date(label).toLocaleDateString('en-IN', {
+          {new Date(label ?? '').toLocaleDateString('en-IN', {
             year: 'numeric',
             month: 'short',
             day: 'numeric',

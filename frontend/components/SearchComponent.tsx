@@ -104,7 +104,7 @@ export function SearchComponent({ onSearch, isLoading }: SearchComponentProps) {
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-sm font-medium text-[var(--foreground)]">{item.name}</div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${item.is_supported ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${item.is_supported ? 'bg-[var(--success-light)] text-[var(--success)]' : 'bg-[var(--warning-light)] text-[var(--warning)]'}`}>
                           {item.is_supported ? 'Analyzable' : 'Lookup only'}
                         </span>
                       </div>
@@ -147,16 +147,23 @@ export function SearchComponent({ onSearch, isLoading }: SearchComponentProps) {
 
       {/* Quick ticker suggestions */}
       <div className="mt-3 flex items-center gap-2 flex-wrap pl-1">
-        <span className="text-xs text-[var(--muted)]">Try:</span>
-        {['0P0000XVKR.BO', '0P0000XVL1.BO', '0P0001K4CC.BO', '^NSEI'].map((t) => (
+        <span className="text-xs text-[var(--muted)]">Popular:</span>
+        {[
+          { ticker: '0P0000XVKR.BO', label: 'Axis Small Cap' },
+          { ticker: '0P0000XVL1.BO', label: 'SBI Small Cap' },
+          { ticker: '0P0001K4CC.BO', label: 'PPFAS Flexi Cap' },
+          { ticker: '0P0001BAP8.BO', label: 'Quant Small Cap' },
+          { ticker: '^NSEI', label: 'NIFTY 50' },
+          { ticker: '0P00013CZ6.BO', label: 'HDFC Small Cap' },
+        ].map((item) => (
           <button
-            key={t}
+            key={item.ticker}
             type="button"
-            onClick={() => { setTicker(t); setError(''); }}
+            onClick={() => { setTicker(item.ticker); setError(''); onSearch(item.ticker, item.label); }}
             className="text-xs px-2.5 py-1 rounded-lg bg-[var(--surface)] text-[var(--muted)] hover:text-[var(--accent)] hover:bg-[var(--accent-light)] transition-colors duration-150"
             disabled={isLoading}
           >
-            {t}
+            {item.label}
           </button>
         ))}
       </div>

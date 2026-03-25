@@ -35,6 +35,13 @@ class PredictionResponse(BaseModel):
     daily_return: Optional[float] = Field(None, description="Most recent daily return %")
     sma_20: Optional[float] = Field(None, description="20-day Simple Moving Average")
     sma_50: Optional[float] = Field(None, description="50-day Simple Moving Average")
+    sharpe_30: Optional[float] = Field(None, description="30-day rolling Sharpe ratio (annualized)")
+    drawdown_60: Optional[float] = Field(None, description="60-day rolling drawdown from peak")
+    return_5: Optional[float] = Field(None, description="5-period return")
+    return_20: Optional[float] = Field(None, description="20-period return")
+    zscore_20: Optional[float] = Field(None, description="Z-score vs 20-period rolling mean")
+    volatility_ratio: Optional[float] = Field(None, description="Short-term to long-term volatility ratio")
+    nav_to_sma50_ratio: Optional[float] = Field(None, description="NAV / SMA50 ratio")
 
 
 class FundSearchResult(BaseModel):

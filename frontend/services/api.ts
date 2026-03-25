@@ -27,6 +27,13 @@ interface BackendPredictionResponse {
   daily_return?: number;
   sma_20?: number;
   sma_50?: number;
+  sharpe_30?: number;
+  drawdown_60?: number;
+  return_5?: number;
+  return_20?: number;
+  zscore_20?: number;
+  volatility_ratio?: number;
+  nav_to_sma50_ratio?: number;
 }
 
 /**
@@ -111,6 +118,13 @@ export async function predictVolatility(ticker: string): Promise<PredictionData>
       dailyReturn: data.daily_return,
       sma20: data.sma_20,
       sma50: data.sma_50,
+      sharpe30: data.sharpe_30,
+      drawdown60: data.drawdown_60,
+      return5: data.return_5,
+      return20: data.return_20,
+      zscore20: data.zscore_20,
+      volatilityRatio: data.volatility_ratio,
+      navToSma50Ratio: data.nav_to_sma50_ratio,
     };
 
     return predictionData;

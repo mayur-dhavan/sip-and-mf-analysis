@@ -303,6 +303,23 @@ class DataFetcher:
                     raise
             raise
         except Exception as e:
+            err_msg = str(e).lower()
+            # yfinance raises generic exceptions for delisted/not-found symbols;
+            # treat those as TickerNotFoundError so the AMFI fallback triggers.
+            is_not_found = any(kw in err_msg for kw in (
+                "not found", "delisted", "no data found", "no price data",
+            ))
+            if is_not_found:
+                mapped_amfi = self._yahoo_to_amfi.get(normalized_ticker.upper())
+                if mapped_amfi:
+                    try:
+                        return self._fetch_amfi_nav_data(mapped_amfi, period)
+                    except TickerNotFoundError:
+                        self._mark_amfi_temporarily_unavailable(mapped_amfi)
+                        raise
+                raise TickerNotFoundError(
+                    f"No data found for ticker '{normalized_ticker}'. Please verify the ticker symbol."
+                )
             # Handle network errors, API failures, etc.
             raise DataSourceUnavailableError(
                 f"Failed to fetch data from yfinance: {str(e)}"

@@ -46,7 +46,7 @@ async def predict_volatility(request: PredictionRequest):
     4. Load ML model and predict
     5. Format response with last 6 months data
     
-    Timeout: 15 seconds total
+    Timeout: 30 seconds total
     
     Args:
         request: PredictionRequest with ticker symbol
@@ -61,10 +61,10 @@ async def predict_volatility(request: PredictionRequest):
     Requirements: 5.1, 5.2, 5.3, 5.5, 4.4, 4.5
     """
     try:
-        # Wrap entire process in 15-second timeout
+        # Wrap entire process in 30-second timeout
         result = await asyncio.wait_for(
             _process_prediction(request.ticker),
-            timeout=15.0
+            timeout=30.0
         )
         return result
         
@@ -74,7 +74,7 @@ async def predict_volatility(request: PredictionRequest):
             status_code=504,
             detail={
                 "code": "TIMEOUT",
-                "message": "Request processing exceeded 15 seconds timeout limit.",
+                "message": "Request processing exceeded 30 seconds timeout limit.",
                 "details": None
             }
         )

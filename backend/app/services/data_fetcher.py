@@ -11,8 +11,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 import joblib
 import time
+import logging
 
 from app.utils.exceptions import TickerNotFoundError, DataSourceUnavailableError
+
+logger = logging.getLogger(__name__)
 from app.data.amfi_master import AMFI_MASTER_FUNDS
 
 
@@ -42,8 +45,8 @@ class DataFetcher:
 
     MAX_DYNAMIC_SCHEMES = 2500
     AMFI_UNAVAILABLE_COOLDOWN_MINUTES = 5
-    AMFI_FETCH_TIMEOUT_SECONDS = 4
-    AMFI_FETCH_MAX_ATTEMPTS = 2
+    AMFI_FETCH_TIMEOUT_SECONDS = 8
+    AMFI_FETCH_MAX_ATTEMPTS = 3
     _LIVE_INDEX_CACHE: Optional[List[Dict[str, str]]] = None
     _LIVE_INDEX_LOADED: bool = False
 
@@ -296,6 +299,7 @@ class DataFetcher:
             # Fallback: try AMFI code if this Yahoo ticker is mapped in registry.
             mapped_amfi = self._yahoo_to_amfi.get(normalized_ticker.upper())
             if mapped_amfi:
+                logger.info("TickerNotFound for %s, trying AMFI fallback %s", normalized_ticker, mapped_amfi)
                 try:
                     return self._fetch_amfi_nav_data(mapped_amfi, period)
                 except TickerNotFoundError:
@@ -313,15 +317,20 @@ class DataFetcher:
             # Always try AMFI fallback when a mapping exists, regardless of error type.
             # This handles rate-limiting, transient Yahoo failures, 404s, etc.
             mapped_amfi = self._yahoo_to_amfi.get(normalized_ticker.upper())
+            logger.info("yfinance failed for %s: %s | AMFI mapping: %s", normalized_ticker, err_msg[:80], mapped_amfi)
             if mapped_amfi and not self._is_amfi_temporarily_unavailable(mapped_amfi):
                 try:
+                    logger.info("Attempting AMFI fallback for scheme %s", mapped_amfi)
                     return self._fetch_amfi_nav_data(mapped_amfi, period)
                 except TickerNotFoundError:
                     self._mark_amfi_temporarily_unavailable(mapped_amfi)
                     raise
-                except DataSourceUnavailableError:
+                except DataSourceUnavailableError as amfi_err:
+                    logger.warning("AMFI fallback also failed for %s: %s", mapped_amfi, amfi_err)
                     # AMFI also failed – fall through to original error handling
                     pass
+            elif mapped_amfi:
+                logger.warning("AMFI scheme %s is in cooldown, skipping fallback", mapped_amfi)
 
             if is_not_found:
                 raise TickerNotFoundError(

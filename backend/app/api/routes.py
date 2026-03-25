@@ -5,6 +5,7 @@ API routes for volatility prediction endpoint.
 from fastapi import APIRouter, HTTPException
 from datetime import datetime, timedelta
 import asyncio
+import logging
 from typing import Dict
 
 from app.models.schemas import (
@@ -18,6 +19,7 @@ from app.services.feature_calculator import FeatureCalculator
 from app.services.ml_engine import MLEngine, ModelNotFoundError, PredictionError
 from app.utils.exceptions import TickerNotFoundError, DataSourceUnavailableError
 
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -61,12 +63,23 @@ async def predict_volatility(request: PredictionRequest):
     Requirements: 5.1, 5.2, 5.3, 5.5, 4.4, 4.5
     """
     try:
-        # Wrap entire process in 30-second timeout
-        result = await asyncio.wait_for(
-            _process_prediction(request.ticker),
-            timeout=30.0
-        )
-        return result
+        # Wrap entire process in 45-second timeout with retry for transient failures
+        last_error = None
+        for attempt in range(2):
+            try:
+                result = await asyncio.wait_for(
+                    _process_prediction(request.ticker),
+                    timeout=40.0
+                )
+                return result
+            except DataSourceUnavailableError as e:
+                last_error = e
+                if attempt == 0:
+                    logger.info("Attempt 1 failed for %s: %s — retrying", request.ticker, e)
+                    await asyncio.sleep(1.5)
+                    continue
+                raise
+        raise last_error  # should not reach here
         
     except asyncio.TimeoutError:
         # Handle timeout → 504
@@ -74,7 +87,7 @@ async def predict_volatility(request: PredictionRequest):
             status_code=504,
             detail={
                 "code": "TIMEOUT",
-                "message": "Request processing exceeded 30 seconds timeout limit.",
+                "message": "Request processing exceeded timeout limit.",
                 "details": None
             }
         )

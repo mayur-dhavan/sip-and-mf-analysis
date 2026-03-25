@@ -21,10 +21,17 @@ from app.utils.exceptions import TickerNotFoundError, DataSourceUnavailableError
 
 router = APIRouter()
 
-# Initialize service components
-data_fetcher = DataFetcher()
+# Lazy-initialized service components (avoid slow AMFI fetch blocking startup)
+_data_fetcher = None
 feature_calculator = FeatureCalculator()
 ml_engine = MLEngine()
+
+
+def get_data_fetcher() -> DataFetcher:
+    global _data_fetcher
+    if _data_fetcher is None:
+        _data_fetcher = DataFetcher()
+    return _data_fetcher
 
 
 @router.post("/api/predict-volatility/", response_model=PredictionResponse)
@@ -131,13 +138,14 @@ async def _process_prediction(ticker: str) -> PredictionResponse:
         PredictionResponse with all required fields
     """
     # Step 1: Fetch NAV data (5 years)
+    fetcher = get_data_fetcher()
     nav_df = await asyncio.to_thread(
-        data_fetcher.fetch_nav_data,
+        fetcher.fetch_nav_data,
         ticker,
         period="5y"
     )
 
-    fund_name = await asyncio.to_thread(data_fetcher.resolve_fund_name, ticker)
+    fund_name = await asyncio.to_thread(fetcher.resolve_fund_name, ticker)
     fund_name = str(fund_name).strip() if fund_name is not None else ticker
     if not fund_name:
         fund_name = ticker
@@ -288,7 +296,7 @@ async def search_funds(query: str, limit: int = 10):
         return FundSearchResponse(query=query_clean, results=[])
 
     safe_limit = max(1, min(limit, 25))
-    results = await asyncio.to_thread(data_fetcher.search_funds, query_clean, safe_limit)
+    results = await asyncio.to_thread(get_data_fetcher().search_funds, query_clean, safe_limit)
     return FundSearchResponse(query=query_clean, results=results)
 
 

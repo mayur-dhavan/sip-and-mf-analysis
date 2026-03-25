@@ -1,8 +1,10 @@
 """Data fetcher component for retrieving mutual fund NAV data."""
 
+import os
+import random
 import pandas as pd
 import yfinance as yf
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import threading
 from contextlib import contextmanager
 import re
@@ -17,6 +19,31 @@ from app.utils.exceptions import TickerNotFoundError, DataSourceUnavailableError
 
 logger = logging.getLogger(__name__)
 from app.data.amfi_master import AMFI_MASTER_FUNDS
+
+# ---------------------------------------------------------------------------
+# User-Agent rotation to reduce fingerprint-based rate limiting
+# ---------------------------------------------------------------------------
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.4; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0",
+]
+
+
+def _random_ua() -> str:
+    return random.choice(_USER_AGENTS)
+
+
+def _build_yf_session(proxy: Optional[str] = None) -> requests.Session:
+    """Build a requests Session with rotating UA and optional proxy for yfinance."""
+    session = requests.Session()
+    session.headers.update({"User-Agent": _random_ua()})
+    if proxy:
+        session.proxies = {"http": proxy, "https": proxy}
+    return session
 
 
 class TimeoutException(Exception):
@@ -47,8 +74,12 @@ class DataFetcher:
     AMFI_UNAVAILABLE_COOLDOWN_MINUTES = 5
     AMFI_FETCH_TIMEOUT_SECONDS = 8
     AMFI_FETCH_MAX_ATTEMPTS = 3
+    NAV_CACHE_TTL_SECONDS = int(os.getenv("NAV_CACHE_TTL_SECONDS", "21600"))  # 6 hours
     _LIVE_INDEX_CACHE: Optional[List[Dict[str, str]]] = None
     _LIVE_INDEX_LOADED: bool = False
+    # Class-level NAV data cache: {(ticker, period): (timestamp, DataFrame)}
+    _nav_cache: Dict[Tuple[str, str], Tuple[float, pd.DataFrame]] = {}
+    _nav_cache_lock = threading.Lock()
 
     def __init__(self):
         self._fund_name_cache: Dict[str, str] = {}
@@ -59,6 +90,8 @@ class DataFetcher:
         self._verified_supported = self._load_verified_supported_tickers()
         self._runtime_unavailable_amfi: set[str] = set()
         self._runtime_unavailable_until: Dict[str, datetime] = {}
+        # Proxy from env var (e.g. "http://user:pass@proxy:8080")
+        self._proxy: Optional[str] = os.getenv("YFINANCE_PROXY")
 
         for fund in AMFI_MASTER_FUNDS:
             yahoo_ticker = fund.get("yahoo_ticker")
@@ -239,6 +272,9 @@ class DataFetcher:
         """
         Fetch historical NAV data for a given ticker.
         
+        Uses an in-memory cache (TTL controlled by NAV_CACHE_TTL_SECONDS env var,
+        default 6 hours) to avoid hitting external APIs for repeated queries.
+        
         Args:
             ticker: Mutual fund ticker symbol (e.g., "NIPPONINDIA.NS")
             period: Time period for historical data (default: "5y")
@@ -252,6 +288,53 @@ class DataFetcher:
             TimeoutError: If request exceeds 10 seconds
         """
         normalized_ticker = ticker.strip()
+        cache_key = (normalized_ticker.upper(), period)
+
+        # --- Cache check ---
+        cached = self._get_cached_nav(cache_key)
+        if cached is not None:
+            logger.info("NAV cache HIT for %s period=%s", normalized_ticker, period)
+            return cached
+
+        # --- Fetch (AMFI-first, then Yahoo) ---
+        nav_df = self._fetch_nav_uncached(normalized_ticker, period)
+
+        # --- Store in cache ---
+        self._set_cached_nav(cache_key, nav_df)
+        return nav_df
+
+    # ------------------------------------------------------------------
+    # Cache helpers
+    # ------------------------------------------------------------------
+    @classmethod
+    def _get_cached_nav(cls, key: Tuple[str, str]) -> Optional[pd.DataFrame]:
+        with cls._nav_cache_lock:
+            entry = cls._nav_cache.get(key)
+            if entry is None:
+                return None
+            ts, df = entry
+            if time.time() - ts > cls.NAV_CACHE_TTL_SECONDS:
+                del cls._nav_cache[key]
+                return None
+            return df.copy()
+
+    @classmethod
+    def _set_cached_nav(cls, key: Tuple[str, str], df: pd.DataFrame) -> None:
+        with cls._nav_cache_lock:
+            cls._nav_cache[key] = (time.time(), df.copy())
+
+    @classmethod
+    def clear_nav_cache(cls) -> int:
+        """Clear entire NAV cache. Returns number of evicted entries."""
+        with cls._nav_cache_lock:
+            count = len(cls._nav_cache)
+            cls._nav_cache.clear()
+            return count
+
+    # ------------------------------------------------------------------
+    # Actual data fetching (no cache)
+    # ------------------------------------------------------------------
+    def _fetch_nav_uncached(self, normalized_ticker: str, period: str) -> pd.DataFrame:
         amfi_code = self._extract_amfi_code(normalized_ticker)
         if amfi_code:
             if self._is_amfi_temporarily_unavailable(amfi_code):
@@ -286,8 +369,12 @@ class DataFetcher:
 
         try:
             with timeout(10):
-                # Fetch data using yfinance
-                ticker_obj = yf.Ticker(normalized_ticker)
+                # Small random delay (0.5-2s) to reduce Yahoo rate-limit pressure
+                time.sleep(random.uniform(0.5, 2.0))
+
+                # Fetch data using yfinance with rotating UA + optional proxy
+                session = _build_yf_session(proxy=self._proxy)
+                ticker_obj = yf.Ticker(normalized_ticker, session=session)
                 hist_data = ticker_obj.history(period=period)
                 
                 # Check if data was retrieved

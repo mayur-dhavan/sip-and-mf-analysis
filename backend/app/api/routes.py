@@ -302,6 +302,22 @@ async def search_funds(query: str, limit: int = 10):
     return FundSearchResponse(query=query_clean, results=results)
 
 
+@router.get("/api/cache-stats/")
+async def cache_stats():
+    """Return current NAV cache size and TTL configuration."""
+    return {
+        "cached_entries": len(DataFetcher._nav_cache),
+        "ttl_seconds": DataFetcher.NAV_CACHE_TTL_SECONDS,
+    }
+
+
+@router.post("/api/clear-cache/")
+async def clear_cache():
+    """Evict all cached NAV data. Useful after a model retrain."""
+    evicted = DataFetcher.clear_nav_cache()
+    return {"evicted": evicted}
+
+
 def _build_analysis_summary(
     prediction: str,
     confidence: float,

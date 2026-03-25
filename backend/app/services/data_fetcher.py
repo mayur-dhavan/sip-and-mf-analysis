@@ -277,11 +277,11 @@ class DataFetcher:
         # AMFI is faster and doesn't rate-limit, unlike Yahoo Finance.
         mapped_amfi = self._yahoo_to_amfi.get(normalized_ticker.upper())
         if mapped_amfi and not self._is_amfi_temporarily_unavailable(mapped_amfi):
-            logger.info("Trying AMFI-first for %s (scheme %s)", normalized_ticker, mapped_amfi)
+            logger.warning("Trying AMFI-first for %s (scheme %s)", normalized_ticker, mapped_amfi)
             try:
                 return self._fetch_amfi_nav_data(mapped_amfi, period)
             except (TickerNotFoundError, DataSourceUnavailableError) as amfi_err:
-                logger.info("AMFI-first failed for %s: %s — falling back to yfinance", mapped_amfi, amfi_err)
+                logger.warning("AMFI-first failed for %s: %s — falling back to yfinance", mapped_amfi, amfi_err)
                 # Fall through to yfinance
 
         try:

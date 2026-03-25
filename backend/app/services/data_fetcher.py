@@ -41,7 +41,7 @@ class DataFetcher:
     """Fetches historical NAV data for mutual funds using yfinance."""
 
     MAX_DYNAMIC_SCHEMES = 2500
-    AMFI_UNAVAILABLE_COOLDOWN_MINUTES = 30
+    AMFI_UNAVAILABLE_COOLDOWN_MINUTES = 5
     AMFI_FETCH_TIMEOUT_SECONDS = 4
     AMFI_FETCH_MAX_ATTEMPTS = 2
     _LIVE_INDEX_CACHE: Optional[List[Dict[str, str]]] = None
@@ -309,14 +309,21 @@ class DataFetcher:
             is_not_found = any(kw in err_msg for kw in (
                 "not found", "delisted", "no data found", "no price data",
             ))
+
+            # Always try AMFI fallback when a mapping exists, regardless of error type.
+            # This handles rate-limiting, transient Yahoo failures, 404s, etc.
+            mapped_amfi = self._yahoo_to_amfi.get(normalized_ticker.upper())
+            if mapped_amfi and not self._is_amfi_temporarily_unavailable(mapped_amfi):
+                try:
+                    return self._fetch_amfi_nav_data(mapped_amfi, period)
+                except TickerNotFoundError:
+                    self._mark_amfi_temporarily_unavailable(mapped_amfi)
+                    raise
+                except DataSourceUnavailableError:
+                    # AMFI also failed – fall through to original error handling
+                    pass
+
             if is_not_found:
-                mapped_amfi = self._yahoo_to_amfi.get(normalized_ticker.upper())
-                if mapped_amfi:
-                    try:
-                        return self._fetch_amfi_nav_data(mapped_amfi, period)
-                    except TickerNotFoundError:
-                        self._mark_amfi_temporarily_unavailable(mapped_amfi)
-                        raise
                 raise TickerNotFoundError(
                     f"No data found for ticker '{normalized_ticker}'. Please verify the ticker symbol."
                 )

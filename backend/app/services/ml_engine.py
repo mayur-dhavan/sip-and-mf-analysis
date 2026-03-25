@@ -9,6 +9,9 @@ from pathlib import Path
 from app.services.feature_config import FEATURE_COLS, FEATURE_KEY_MAP
 
 
+HF_SPACE_REPO = "mayur6901/sip-mf-volatility-predictor"
+HF_MODEL_FILENAME = "volatility_model.pkl"
+
 
 class ModelNotFoundError(Exception):
     """Raised when the ML model file is not found."""
@@ -18,6 +21,30 @@ class ModelNotFoundError(Exception):
 class PredictionError(Exception):
     """Raised when prediction fails."""
     pass
+
+
+def _download_model_from_hf(dest_path: str) -> str:
+    """Download model from Hugging Face Space if not available locally."""
+    try:
+        from huggingface_hub import hf_hub_download
+        print(f"Model not found locally. Downloading from HF Space: {HF_SPACE_REPO} ...")
+        downloaded = hf_hub_download(
+            repo_id=HF_SPACE_REPO,
+            filename=HF_MODEL_FILENAME,
+            repo_type="space",
+        )
+        # Copy to expected local path so future loads are instant
+        dest = Path(dest_path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        import shutil
+        shutil.copy2(downloaded, dest)
+        print(f"Model downloaded to {dest}")
+        return str(dest)
+    except Exception as e:
+        print(f"HF download failed: {e}")
+        raise ModelNotFoundError(
+            f"Model not found locally and HF download failed: {e}"
+        )
 
 
 class MLEngine:
@@ -34,13 +61,11 @@ class MLEngine:
         self._decision_threshold = 0.5
     
     def load_model(self, model_path: str = None) -> object:
-        """Load pre-trained model from disk."""
+        """Load pre-trained model from disk, downloading from HF if needed."""
         path = model_path or self.model_path
         
         if not os.path.exists(path):
-            raise ModelNotFoundError(
-                f"Model file not found at '{path}'. Please train the model first."
-            )
+            path = _download_model_from_hf(path)
         
         try:
             artifact = joblib.load(path)

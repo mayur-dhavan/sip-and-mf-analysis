@@ -45,8 +45,10 @@ htmlcov/
 .env.local
 !.env.example
 
-# ML Models (optional - uncomment if models should not be committed)
-# models/*.pkl
+# ML model artifacts (do not commit large binaries)
+models/*.pkl
+models/challengers/*.pkl
+models/registry/versions/*.pkl
 
 # Logs
 *.log

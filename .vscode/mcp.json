@@ -3,6 +3,15 @@
     "github": {
       "type": "http",
       "url": "https://api.githubcopilot.com/mcp/"
-    }
+    },
+    "hf-mcp-server": {
+      "url": "https://huggingface.co/mcp?login"
+    },
+    "render": {
+      "url": "https://mcp.render.com/mcp",
+      "headers": {
+        "Authorization": "Bearer rnd_shQKoROrytsJfcUgBvtKsYt6jamZ"
+      }
+    },
   }
 }

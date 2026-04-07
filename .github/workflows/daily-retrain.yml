@@ -2,8 +2,8 @@ name: Daily Model Retrain
 
 on:
   schedule:
-    # Run daily at 2:00 AM UTC (7:30 AM IST)
-    - cron: '0 2 * * *'
+    # Run at 2:00 AM UTC (7:30 AM IST) every 2nd day of the month
+    - cron: '0 2 */2 * *'
   workflow_dispatch:  # Allow manual trigger
 
 jobs:

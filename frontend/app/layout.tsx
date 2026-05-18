@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Mutual Fund Volatility & Trend Analyzer",
+  title: "Mutual Fund Risk and Trend Analyzer",
   description: "AI-powered volatility forecasting and historical trend analysis for Indian Small-Cap Mutual Funds",
 };
 

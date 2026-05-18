@@ -87,7 +87,7 @@ export default function Home() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
             </svg>
           </div>
-          <span className="font-semibold text-sm text-[var(--foreground)]">SIP & MF Analyzer</span>
+          <span className="font-semibold text-sm text-[var(--foreground)]">Mutual Fund Risk and Trend Analyzer</span>
         </div>
       </nav>
 
@@ -95,7 +95,7 @@ export default function Home() {
         {/* Hero / Header */}
         <header className="text-center mb-10">
           <h1 className="text-3xl sm:text-4xl font-bold text-[var(--foreground)] mb-3 tracking-tight">
-            SIP & Mutual Fund Analyzer
+            Mutual Fund Risk and Trend Analyzer
           </h1>
           <p className="text-[var(--muted)] max-w-xl mx-auto text-sm sm:text-base">
             AI-powered risk analysis & SIP planning for Indian Mutual Funds with 19 technical indicators

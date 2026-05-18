@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState, useRef, FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { searchFunds } from '@/services/api';
 import { FundSearchResult } from '@/types';
 
@@ -14,6 +15,18 @@ export function SearchComponent({ onSearch, isLoading }: SearchComponentProps) {
   const [error, setError] = useState('');
   const [suggestions, setSuggestions] = useState<FundSearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
+  const inputRowRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  const updateDropdownPos = () => {
+    if (inputRowRef.current) {
+      const rect = inputRowRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 8, left: rect.left, width: rect.width });
+    }
+  };
 
   useEffect(() => {
     if (ticker.trim().length < 2 || isLoading) {
@@ -25,9 +38,11 @@ export function SearchComponent({ onSearch, isLoading }: SearchComponentProps) {
         const results = await searchFunds(ticker);
         setSuggestions(results);
         setShowSuggestions(true);
+        updateDropdownPos();
       } catch {
         setSuggestions([]);
         setShowSuggestions(true);
+        updateDropdownPos();
       }
     }, 250);
 
@@ -66,7 +81,7 @@ export function SearchComponent({ onSearch, isLoading }: SearchComponentProps) {
   return (
     <div className="w-full max-w-2xl mx-auto">
       <form onSubmit={handleSubmit}>
-        <div className="flex gap-3">
+        <div className="flex gap-3" ref={inputRowRef}>
           <div className="flex-1 relative">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
               <svg className="w-5 h-5 text-[var(--muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -89,38 +104,8 @@ export function SearchComponent({ onSearch, isLoading }: SearchComponentProps) {
               placeholder="Search mutual fund name or ticker (e.g., Axis Small Cap / 0P0000XVKR.BO)"
               className="w-full pl-12 pr-4 py-3.5 bg-[var(--card-background)] border border-[var(--card-border)] rounded-xl text-[var(--foreground)] placeholder-[var(--muted)] focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent outline-none transition-all duration-200"
               disabled={isLoading}
-              onFocus={() => setShowSuggestions(suggestions.length > 0)}
+              onFocus={() => { setShowSuggestions(suggestions.length > 0); updateDropdownPos(); }}
             />
-            {showSuggestions && ticker.trim().length >= 2 && (
-              <div className="absolute z-20 mt-2 w-full bg-[var(--card-background)] border border-[var(--card-border)] rounded-xl shadow-lg max-h-64 overflow-auto">
-                {suggestions.length > 0 ? (
-                  suggestions.map((item) => (
-                    <button
-                      key={item.ticker}
-                      type="button"
-                      onClick={() => handleSuggestionClick(item)}
-                      className="w-full text-left px-4 py-3 hover:bg-[var(--surface)] transition-colors"
-                      disabled={isLoading}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-sm font-medium text-[var(--foreground)]">{item.name}</div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${item.is_supported ? 'bg-[var(--success-light)] text-[var(--success)]' : 'bg-[var(--warning-light)] text-[var(--warning)]'}`}>
-                          {item.is_supported ? 'Analyzable' : 'Lookup only'}
-                        </span>
-                      </div>
-                      <div className="text-xs text-[var(--muted)] font-mono mt-0.5">{item.yahoo_ticker || item.ticker}</div>
-                      <div className="text-[11px] text-[var(--muted)] mt-0.5">
-                        {[item.fund_house, item.category, item.amfi_code ? `AMFI ${item.amfi_code}` : null].filter(Boolean).join(' | ')}
-                      </div>
-                    </button>
-                  ))
-                ) : (
-                  <div className="px-4 py-3 text-sm text-[var(--muted)]">
-                    No funds matched this query. Press Analyze to try direct ticker/scheme code lookup.
-                  </div>
-                )}
-              </div>
-            )}
           </div>
           <button
             type="submit"
@@ -144,6 +129,48 @@ export function SearchComponent({ onSearch, isLoading }: SearchComponentProps) {
           <p className="mt-2 text-sm text-[var(--danger)] pl-4">{error}</p>
         )}
       </form>
+
+      {/* Dropdown rendered via portal — escapes all stacking contexts */}
+      {mounted && showSuggestions && ticker.trim().length >= 2 && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: dropdownPos.top,
+            left: dropdownPos.left,
+            width: dropdownPos.width,
+            zIndex: 99999,
+          }}
+          className="bg-[var(--card-background)] border border-[var(--card-border)] rounded-xl shadow-lg max-h-64 overflow-auto"
+        >
+          {suggestions.length > 0 ? (
+            suggestions.map((item) => (
+              <button
+                key={item.ticker}
+                type="button"
+                onClick={() => handleSuggestionClick(item)}
+                className="w-full text-left px-4 py-3 hover:bg-[var(--surface)] transition-colors"
+                disabled={isLoading}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-sm font-medium text-[var(--foreground)]">{item.name}</div>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${item.is_supported ? 'bg-[var(--success-light)] text-[var(--success)]' : 'bg-[var(--warning-light)] text-[var(--warning)]'}`}>
+                    {item.is_supported ? 'Analyzable' : 'Lookup only'}
+                  </span>
+                </div>
+                <div className="text-xs text-[var(--muted)] font-mono mt-0.5">{item.yahoo_ticker || item.ticker}</div>
+                <div className="text-[11px] text-[var(--muted)] mt-0.5">
+                  {[item.fund_house, item.category, item.amfi_code ? `AMFI ${item.amfi_code}` : null].filter(Boolean).join(' | ')}
+                </div>
+              </button>
+            ))
+          ) : (
+            <div className="px-4 py-3 text-sm text-[var(--muted)]">
+              No funds matched this query. Press Analyze to try direct ticker/scheme code lookup.
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
 
       {/* Quick ticker suggestions */}
       <div className="mt-3 flex items-center gap-2 flex-wrap pl-1">
